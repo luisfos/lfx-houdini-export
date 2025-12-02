@@ -1,0 +1,60 @@
+# Configuration for parameter menu callbacks
+# Defines optype-specific settings for versioned path parameters
+
+# Default settings for all optypes (fallback)
+[default]
+extensions = [".bgeo.sc", ".bgeo", ".abc", ".usd", ".usda", ".usdc", ".vdb", ".obj", ".fbx"]
+default_extension = ".bgeo.sc"
+time_dependent = true
+base_folder = "$HIP/geo"
+
+# ROP Geometry node
+[rop_geometry]
+extensions = [".bgeo", ".bgeo.sc", ".vdb"]
+default_extension = ".bgeo.sc"
+
+# Geometry SOP (alias to rop_geometry)
+[geometry]
+alias = "rop_geometry"
+
+# ROP Alembic node
+[rop_alembic]
+extensions = [".abc"]
+default_extension = ".abc"
+time_dependent = false
+base_folder = "$HIP/abc"
+
+# Alembic SOP (alias to rop_alembic)
+[alembic]
+alias = "rop_alembic"
+
+# ROP Image/Mantra
+[rop_image]
+extensions = [".exr", ".jpg", ".png"]
+default_extension = ".exr"
+base_folder = "$HIP/img"
+
+# USD ROP nodes
+[usd_rop]
+extensions = [".usd", ".usda", ".usdc"]
+default_extension = ".usd"
+
+[usdrender_rop]
+extensions = [".exr", ".jpg", ".png"]
+default_extension = ".exr"
+base_folder = "$HIP/render"
+
+# File SOP
+[file]
+extensions = [".bgeo", ".bgeo.sc", ".abc", ".vdb", ".obj", ".fbx"]
+default_extension = ".bgeo.sc"
+
+# File Cache SOP
+[filecache]
+extensions = [".bgeo", ".bgeo.sc", ".vdb"]
+default_extension = ".bgeo.sc"
+
+# ROP FBX
+[rop_fbx]
+extensions = [".fbx"]
+default_extension = ".fbx"

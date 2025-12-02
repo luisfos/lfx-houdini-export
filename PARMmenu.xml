@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<menuDocument>
+    <!-- Extend the parameter context menu -->
+    <menu>
+        <scriptItem id="versionned_path">
+            <label>Versionned path</label>
+            <scriptCode><![CDATA[
+import parm_menu_callbacks
+parm_menu_callbacks.handle_versionned_path(kwargs)
+]]></scriptCode>
+        </scriptItem>
+    </menu>
+</menuDocument>
