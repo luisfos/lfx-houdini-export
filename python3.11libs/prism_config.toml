@@ -1,0 +1,59 @@
+# Configuration for parameter menu callbacks
+# Defines optype-specific settings for versioned path parameters
+
+# Default settings for all optypes (fallback)
+[default]
+extensions = [".bgeo.sc", ".bgeo", ".abc", ".usd", ".usda", ".usdc", ".vdb", ".obj", ".fbx"]
+time_dependent = true
+default_type = "Product"
+
+# --- SETTING GROUPS ---
+# Define reusable, named groups of settings
+
+[groups.render]
+default_type = "3dRender"
+extensions = [".exr", ".jpg", ".png"]
+time_dependent = true
+
+[groups.geo_cache]
+default_type = "Product"
+extensions = [".bgeo.sc", ".bgeo", ".vdb"]
+time_dependent = true
+
+[groups.alembic_cache]
+default_type = "Product"
+extensions = [".abc"]
+time_dependent = false
+
+[groups.usd]
+default_type = "Product"
+extensions = [".usd", ".usda", ".usdc"]
+time_dependent = false
+
+
+# --- ROP to Group Mapping ---
+# Map each ROP to one of the groups defined above.
+[rop_settings]
+usdrender      = "groups.render"
+karmarendersettings = "groups.render"
+octane             = "groups.render"
+redshift_rop       = "groups.render"
+ifd                = "groups.render"
+karma                = "groups.render"
+opengl                = "groups.render"
+
+rop_geometry       = "groups.geo_cache"
+geometry           = "groups.geo_cache"
+file               = "groups.geo_cache"
+
+rop_alembic        = "groups.alembic_cache"
+alembic            = "groups.alembic_cache"
+
+usd_rop            = "groups.usd"
+
+# --- Overrides for specific ROPs ---
+# If a ROP needs a specific setting changed, you can override it here.
+[rop_settings.rop_image]
+group = "groups.render" # Inherits from the render group...
+default_type = "2drender" # ...but overrides the default_type.
+

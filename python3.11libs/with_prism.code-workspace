@@ -1,0 +1,26 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"python-envs.defaultEnvManager": "ms-python.python:system",
+		"python.analysis.extraPaths": [
+			"C:/Program Files/Prism2/Scripts",
+		]
+	},
+
+	"files.exclude": {
+		"**/__pycache__": true,
+		"**/*.pyc": true,
+		"**/Scripts/UserInterfacesPrism": true,
+		"**/Scripts/ProjectScripts/StateManagerNodes/StateUserInterfaces": true
+	},
+	"search.exclude": {
+		"**/Scripts/UserInterfacesPrism": true,
+		"**/Scripts/ProjectScripts/StateManagerNodes/StateUserInterfaces": true
+	},
+
+	
+}
