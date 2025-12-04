@@ -198,7 +198,15 @@ prism_callbacks.on_context_changed(kwargs)
         "Identifier",
         1,
         default_value=["$OS"],
-        string_type=hou.stringParmType.Regular
+        string_type=hou.stringParmType.Regular,
+        menu_items=[],
+        menu_labels=[],
+        menu_type=hou.menuType.StringReplace,
+        item_generator_script="""
+import prism_callbacks
+return prism_callbacks.get_existing_identifiers(kwargs)
+""",
+        item_generator_script_language=hou.scriptLanguage.Python
     )
     
     # Create version parameter
@@ -281,13 +289,15 @@ prism_callbacks.open_folder_callback(kwargs, parm_name='{parm.name()}')
         f"{PARM_PREFIX}ctype",
         "Custom Context Type",
         1,
-        default_value=[ctype_expr],
+        default_value=["shot"],
         string_type=hou.stringParmType.Regular,
         menu_items=["shot", "asset"],
         menu_labels=["Shot", "Asset"],
         menu_type=hou.menuType.Normal
     )
     ctype.setConditional(hou.parmCondType.HideWhen, f'{{ {PARM_PREFIX}hide_helpers == 1 }}')
+    ctype.setDefaultExpression((ctype_expr))
+    # ctype.setDefaultExpressionLanguage(hou.scriptLanguage.Hscript)
 
     cshasset = hou.StringParmTemplate(
         f"{PARM_PREFIX}cshasset",
@@ -548,15 +558,55 @@ def on_context_changed(kwargs):
     """
     node = kwargs['node']
     parm = node.parm(f'{PARM_PREFIX}context')
+
+    ctype_parm = node.parm(f'{PARM_PREFIX}ctype')
+    cshasset_parm = node.parm(f'{PARM_PREFIX}cshasset')
+    csequence_parm = node.parm(f'{PARM_PREFIX}csequence')
+
     if parm.evalAsString() == "From Scenefile":
         # Reset custom context parameters to their default values
-        ctype_parm = node.parm(f'{PARM_PREFIX}ctype')
-        cshasset_parm = node.parm(f'{PARM_PREFIX}cshasset')
-        csequence_parm = node.parm(f'{PARM_PREFIX}csequence')
 
-        ctype_parm.revertToDefaults()
+        # ctype_parm.revertToDefaults()
+        ctype_expr = 'ifs(strcmp("$PRISM_SHOT", "") == 0, "asset", "shot")'
+        ctype_parm.setExpression(ctype_expr, language=hou.exprLanguage.Hscript)
         cshasset_parm.revertToDefaults()
         csequence_parm.revertToDefaults()
+    else:
+        # set ctype to no expression
+        ctype_parm.deleteAllKeyframes()
+
+def get_existing_identifiers(kwargs):
+    """
+    Finds existing identifiers in the output directory to populate a menu.
+    """
+    import os
+    
+    node = kwargs.get('node')
+    if not node:
+        return []
+
+    try:
+        base_path = node.parm(f'{PARM_PREFIX}base').eval()
+        shasset_path = node.parm(f'{PARM_PREFIX}shasset').eval()
+        etype_path = node.parm(f'{PARM_PREFIX}etype').eval()
+    except AttributeError:
+        # This can happen when the menu is being built before parms are evaluated.
+        return []
+
+    lookup_dir = f'{base_path}/{shasset_path}/{etype_path}'
+    
+    if not os.path.isdir(lookup_dir):
+        return []
+        
+    try:
+        subfolders = [d for d in os.listdir(lookup_dir) if os.path.isdir(os.path.join(lookup_dir, d))]
+        # The menu requires a flat list of token and label pairs.
+        menu_items = []
+        for folder in subfolders:
+            menu_items.extend([folder, folder])
+        return menu_items
+    except OSError:
+        return []
 
 # local testing
 if __name__ == "__main__":
