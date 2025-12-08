@@ -367,6 +367,7 @@ class SaveInterface(QtWidgets.QDialog):
         # Export button
         self.export_button = QtWidgets.QPushButton("EXPORT")
         self.export_button.setObjectName("ExportButton")
+        self.export_button.clicked.connect(self.on_export_clicked)
         
         # Progress bar below export button
         self.progress_bar = QtWidgets.QProgressBar()
@@ -400,8 +401,17 @@ class SaveInterface(QtWidgets.QDialog):
         form_layout.setSpacing(10)
         form_layout.setLabelAlignment(QtCore.Qt.AlignLeft)
         form_layout.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+
+        # Open in.. dropdown at end of context form
+        # self.content_layout.addWidget(self.open_in_button)
+        context_layout = QtWidgets.QHBoxLayout()
+        context_layout.addWidget(self.context_value)
+        context_layout.addStretch()
+        context_layout.addWidget(self.open_in_button)
         
-        form_layout.addRow(self.context_label, self.context_value)
+        form_layout.addRow(self.context_label, context_layout)
+
+        
         # Identifier row: line edit + dropdown
         form_layout.addRow(self.identifier_label, self.identifier_combo)
 
@@ -415,11 +425,10 @@ class SaveInterface(QtWidgets.QDialog):
 
         form_layout.addRow(self.format_label, self.format_combobox)
         form_layout.addRow(self.preview_path_label, self.preview_path_value)
+        
 
         self.content_layout.addLayout(form_layout)
 
-        # Open in.. dropdown at end of context form
-        self.content_layout.addWidget(self.open_in_button)
 
         # Comment Layout
         self.content_layout.addWidget(self.comment_label)
@@ -438,6 +447,44 @@ class SaveInterface(QtWidgets.QDialog):
         
         # Attach logger handler now that console exists
         self.attach_logger_to_console()
+
+    def on_export_clicked(self):
+        """Handle Export: save image sequence via hscript and log output.
+        Step 1: Run `imgsave -a` with the preview path.
+        """
+        # Show busy progress and disable button
+        try:
+            self.progress_bar.setVisible(True)
+            self.progress_bar.setRange(0, 0)  # indeterminate
+            self.export_button.setEnabled(False)
+        except Exception:
+            pass
+
+        # Get the path from preview and escape $F for hscript
+        output_path = self.preview_path_value.text().strip()
+        escaped_path = output_path.replace("$F", "\\$F")
+
+        logger.info(f"Running imgsave for sequence: {escaped_path}")
+        # Execute hscript and capture output
+        try:
+            import hou
+            out, err = hou.hscript(f'imgsave -a "{escaped_path}"')
+            if out:
+                logger.info(out.strip())
+            if err:
+                logger.error(err.strip())
+            logger.info("Image sequence save completed.")
+        except Exception as e:
+            logger.exception(f"imgsave failed: {e}")
+        finally:
+            # Restore UI state
+            try:
+                self.progress_bar.setRange(0, 100)
+                self.progress_bar.setValue(0)
+                self.progress_bar.setVisible(False)
+                self.export_button.setEnabled(True)
+            except Exception:
+                pass
 
     def update_widget_states(self):
         """Enable/disable widgets based on checkbox states and update paths."""
