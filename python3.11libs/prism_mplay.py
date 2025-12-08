@@ -1,16 +1,32 @@
 import sys
 import logging
 from PySide6 import QtWidgets, QtCore, QtGui
+try:
+    from shiboken6 import isValid as _qt_is_valid
+except Exception:
+    def _qt_is_valid(obj):
+        try:
+            return obj is not None
+        except Exception:
+            return False
 
 # --- Logging Setup ---
 def setup_logger():
     logger = logging.getLogger(__name__)
     if not logger.handlers:
         logger.setLevel(logging.DEBUG)
+        # Primary stream handler
         handler = logging.StreamHandler(sys.stdout)
         formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         handler.setFormatter(formatter)
         logger.addHandler(handler)
+        # Add a temporary buffer handler to capture early logs before UI exists
+        buffer_handler = logging.handlers.BufferingHandler(capacity=1000)
+        buffer_handler.setLevel(logging.DEBUG)
+        buffer_handler.setFormatter(formatter)
+        logger.addHandler(buffer_handler)
+        # Store buffer handler on the logger for later flush
+        logger._buffer_handler = buffer_handler
     return logger
 
 logger = setup_logger()
@@ -113,6 +129,34 @@ QComboBox::down-arrow {
     image: url(v_arrow.png);
     width: 12px;
     height: 12px;
+}
+
+/* Menus and ToolButtons */
+QToolButton {
+    background-color: #4a4d50;
+    color: #e0e0e0;
+    border: 1px solid #5a5d60;
+    border-radius: 4px;
+    padding: 6px 10px;
+    font-weight: bold;
+}
+QToolButton:hover {
+    background-color: #5a5d60;
+    border-color: #FE9532;
+}
+QToolButton::menu-indicator {
+    image: none;
+}
+QMenu {
+    background-color: #1a1c1e;
+    border: 1px solid #4a4d50;
+}
+QMenu::item {
+    padding: 6px 12px;
+    color: #e0e0e0;
+}
+QMenu::item:selected {
+    background-color: #5a5d60;
 }
 
 /* Buttons */
@@ -256,6 +300,16 @@ class SaveInterface(QtWidgets.QDialog):
         self.identifier_combo = QtWidgets.QComboBox()
         self.identifier_combo.setEditable(True)
         self.identifier_combo.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+        # Default identifier from PRISM_TASK
+        try:
+            import hou
+            task_default = hou.getenv("PRISM_TASK") or ""
+            if task_default:
+                self.identifier_combo.setEditText(task_default)
+        except Exception:
+            pass
+        # Update preview when identifier changes
+        self.identifier_combo.editTextChanged.connect(self.update_widget_states)
 
         self.auto_version_checkbox = QtWidgets.QCheckBox("AUTO VERSION")
         self.auto_version_checkbox.setChecked(True)
@@ -264,11 +318,15 @@ class SaveInterface(QtWidgets.QDialog):
         self.version_spinbox = QtWidgets.QSpinBox()
         self.version_spinbox.setValue(1)
         self.version_spinbox.setMinimum(1)
+        # Update preview when version changes
+        self.version_spinbox.valueChanged.connect(self.update_widget_states)
 
         self.format_label = QtWidgets.QLabel("FORMAT")
         self.format_combobox = QtWidgets.QComboBox()
         self.format_combobox.addItems(["JPG", "PNG", "EXR", "TIF"])
         self.format_combobox.setSizePolicy(QtWidgets.QSizePolicy.MinimumExpanding, QtWidgets.QSizePolicy.Fixed)
+        # Update preview when format changes
+        self.format_combobox.currentTextChanged.connect(self.update_widget_states)
 
 
         self.preview_path_label = QtWidgets.QLabel("PREVIEW PATH")
@@ -295,8 +353,12 @@ class SaveInterface(QtWidgets.QDialog):
         self.video_codec_combobox = QtWidgets.QComboBox()
         self.video_codec_combobox.addItems(["AV1 (WEBM)", "H.264 (MP4)", "PRORES (MOV)"])
         self.video_codec_combobox.setSizePolicy(QtWidgets.QSizePolicy.MinimumExpanding, QtWidgets.QSizePolicy.Fixed)
+        # New: keep image sequence toggle (default true)
+        self.keep_sequence_checkbox = QtWidgets.QCheckBox("KEEP IMAGE SEQUENCE")
+        self.keep_sequence_checkbox.setChecked(True)
         ev_layout.addWidget(self.video_codec_label)
         ev_layout.addWidget(self.video_codec_combobox)
+        ev_layout.addWidget(self.keep_sequence_checkbox)
         ev_layout.addStretch()
         ev_group_layout = QtWidgets.QVBoxLayout(self.export_video_group)
         ev_group_layout.setContentsMargins(10, 6, 10, 6)
@@ -305,6 +367,29 @@ class SaveInterface(QtWidgets.QDialog):
         # Export button
         self.export_button = QtWidgets.QPushButton("EXPORT")
         self.export_button.setObjectName("ExportButton")
+        
+        # Progress bar below export button
+        self.progress_bar = QtWidgets.QProgressBar()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setVisible(False)
+        
+        # Console output for logger
+        self.console_output = QtWidgets.QTextEdit()
+        self.console_output.setReadOnly(True)
+        self.console_output.setMinimumHeight(100)
+        self.console_output.setStyleSheet("background-color: #1a1c1e; color: #c0c0c0; border: 1px solid #4a4d50;")
+
+        # Open in.. toolbutton with dropdown
+        self.open_in_button = QtWidgets.QToolButton()
+        self.open_in_button.setText("Open in..")
+        self.open_in_button.setPopupMode(QtWidgets.QToolButton.InstantPopup)
+        open_menu = QtWidgets.QMenu(self.open_in_button)
+        self.menu_open_explorer = open_menu.addAction("Open in explorer")
+        self.menu_open_prism = open_menu.addAction("Open in Prism")
+        self.open_in_button.setMenu(open_menu)
+        self.menu_open_explorer.triggered.connect(self.open_in_explorer)
+        self.menu_open_prism.triggered.connect(self.open_in_prism)
 
     def create_layouts(self):
         self.content_layout = QtWidgets.QVBoxLayout()
@@ -321,16 +406,20 @@ class SaveInterface(QtWidgets.QDialog):
         form_layout.addRow(self.identifier_label, self.identifier_combo)
 
         version_layout = QtWidgets.QHBoxLayout()
-        version_layout.addWidget(self.auto_version_checkbox)
-        version_layout.addWidget(self.version_label)
-        version_layout.addWidget(self.version_spinbox)
+        # Keep VERSION label in place, then checkbox aligned with field column, spinbox aligned right
+        # version_layout.addWidget(self.version_label)
         version_layout.addStretch()
-        form_layout.addRow(version_layout)
+        version_layout.addWidget(self.auto_version_checkbox)
+        version_layout.addWidget(self.version_spinbox, alignment=QtCore.Qt.AlignRight)
+        form_layout.addRow(self.version_label, version_layout)
 
         form_layout.addRow(self.format_label, self.format_combobox)
         form_layout.addRow(self.preview_path_label, self.preview_path_value)
 
         self.content_layout.addLayout(form_layout)
+
+        # Open in.. dropdown at end of context form
+        self.content_layout.addWidget(self.open_in_button)
 
         # Comment Layout
         self.content_layout.addWidget(self.comment_label)
@@ -343,6 +432,12 @@ class SaveInterface(QtWidgets.QDialog):
 
         # Export button
         self.content_layout.addWidget(self.export_button)
+        # Progress bar and console output below export button
+        self.content_layout.addWidget(self.progress_bar)
+        self.content_layout.addWidget(self.console_output)
+        
+        # Attach logger handler now that console exists
+        self.attach_logger_to_console()
 
     def update_widget_states(self):
         """Enable/disable widgets based on checkbox states and update paths."""
@@ -377,9 +472,70 @@ class SaveInterface(QtWidgets.QDialog):
         self.export_video_group.setChecked(prev)
         self.export_video_content.setVisible(prev)
         self.export_video_group.blockSignals(False)
+        # Ensure logger handler is attached on show
+        self.attach_logger_to_console()
+
+    def attach_logger_to_console(self):
+        # Create a logging handler that writes to the QTextEdit
+        if not hasattr(self, 'console_output'):
+            return
+        class QTextEditHandler(logging.Handler):
+            def __init__(self, widget):
+                super().__init__()
+                self.widget = widget
+                self.setLevel(logging.DEBUG)
+                fmt = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+                self.setFormatter(fmt)
+            def emit(self, record):
+                # Guard against deleted Qt objects
+                if not _qt_is_valid(self.widget):
+                    return
+                msg = self.format(record)
+                try:
+                    QtCore.QMetaObject.invokeMethod(
+                        self.widget,
+                        "append",
+                        QtCore.Qt.QueuedConnection,
+                        QtCore.Q_ARG(str, msg)
+                    )
+                except RuntimeError:
+                    # Widget likely deleted; ignore
+                    pass
+        # Avoid duplicate handlers targeting this console_output
+        for h in logger.handlers:
+            if isinstance(h, logging.Handler) and getattr(h, 'widget', None) is self.console_output:
+                return
+        self._console_log_handler = QTextEditHandler(self.console_output)
+        logger.addHandler(self._console_log_handler)
+        # Emit a small message confirming attachment
+        logger.debug("Console logger attached")
+        # Flush any buffered logs captured before UI existed
+        try:
+            buf = getattr(logger, "_buffer_handler", None)
+            if buf and isinstance(buf, logging.handlers.BufferingHandler):
+                for rec in list(buf.buffer):
+                    logger.handle(rec)
+                buf.flush()
+                logger.removeHandler(buf)
+                logger._buffer_handler = None
+                logger.debug("Buffered logs flushed to console")
+        except Exception:
+            pass
 
     def closeEvent(self, event):
         global dialog_instance
+        # Detach console logger handler to avoid emitting to deleted widget on reload
+        try:
+            if hasattr(self, '_console_log_handler') and self._console_log_handler in logger.handlers:
+                logger.removeHandler(self._console_log_handler)
+                self._console_log_handler = None
+            # Also clear any buffer handler
+            buf = getattr(logger, "_buffer_handler", None)
+            if buf and buf in logger.handlers:
+                logger.removeHandler(buf)
+                logger._buffer_handler = None
+        except Exception:
+            pass
         dialog_instance = None
         super().closeEvent(event)
 
@@ -447,7 +603,7 @@ class SaveInterface(QtWidgets.QDialog):
 
         full_path = f"{playblast_base_path}{identifier}/{version_str}/{filename}"
 
-        print(full_path)
+        # print(full_path)
         self.preview_path_value.setText(full_path)
 
     def populate_identifiers(self, base: str, shasset_path: str):
@@ -469,6 +625,21 @@ class SaveInterface(QtWidgets.QDialog):
             if items:
                 self.identifier_combo.addItems(items)
             self.identifier_combo.blockSignals(False)
+
+    def open_in_explorer(self):
+        # Open the preview path folder in OS explorer
+        try:
+            path = self.preview_path_value.text()
+            import os
+            folder = os.path.dirname(path)
+            if folder:
+                QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(folder))
+        except Exception:
+            pass
+
+    def open_in_prism(self):
+        # Placeholder: integrate with Prism to open path
+        logger.info("Open in Prism triggered")
 
 
     # --- Window Dragging Methods ---
