@@ -238,9 +238,9 @@ class SaveInterface(QtWidgets.QDialog):
     def __init__(self, parent=get_main_window()):
         super(SaveInterface, self).__init__(parent)
         
-        # Make window frameless; avoid global always-on-top
-        # We'll raise/activate on show to keep above MPlay
-        self.setWindowFlags(QtCore.Qt.FramelessWindowHint)
+        # Make window frameless and stay on top of MPlay
+        # Using WindowStaysOnTopHint to ensure it stays above MPlay
+        self.setWindowFlags(QtCore.Qt.FramelessWindowHint | QtCore.Qt.WindowStaysOnTopHint)
         self.setAttribute(QtCore.Qt.WA_TranslucentBackground)
         
         self.setWindowTitle("MPlay Prism Save")
@@ -329,6 +329,7 @@ class SaveInterface(QtWidgets.QDialog):
         self.identifier_combo = QtWidgets.QComboBox()
         self.identifier_combo.setEditable(True)
         self.identifier_combo.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+        self.identifier_combo.setPlaceholderText("Name of Playblast")
         # Default identifier from PRISM_TASK
         try:
             import hou
@@ -365,14 +366,15 @@ class SaveInterface(QtWidgets.QDialog):
 
         # Comment section
         self.comment_label = QtWidgets.QLabel("COMMENT")
-        self.comment_edit = QtWidgets.QTextEdit("MY COMMENT")
+        self.comment_edit = QtWidgets.QTextEdit("")
+        self.comment_edit.setPlaceholderText("Enter comment here...")
         self.comment_edit.setFixedHeight(60)
 
         # Export Video section as a checkable folder/group
         self.export_video_group = QtWidgets.QGroupBox("EXPORT VIDEO")
         self.export_video_group.setCheckable(True)
         self.export_video_group.setFlat(True)
-        self.export_video_group.setChecked(False)
+        self.export_video_group.setChecked(True)
         self.export_video_group.toggled.connect(self.update_widget_states)
 
         self.export_video_content = QtWidgets.QWidget()
@@ -380,11 +382,12 @@ class SaveInterface(QtWidgets.QDialog):
         ev_layout.setContentsMargins(10, 0, 0, 0)
         self.video_codec_label = QtWidgets.QLabel("VIDEO CODEC")
         self.video_codec_combobox = QtWidgets.QComboBox()
-        self.video_codec_combobox.addItems(["AV1 (WEBM)", "H.264 (MP4)", "H.265 (MP4)", "PRORES (MOV)"])
+        # Removed ProRes; all codecs use MP4 containers
+        self.video_codec_combobox.addItems(["AV1", "H.264", "H.265"])
         self.video_codec_combobox.setSizePolicy(QtWidgets.QSizePolicy.MinimumExpanding, QtWidgets.QSizePolicy.Fixed)
         # New: keep image sequence toggle (default true)
         self.keep_sequence_checkbox = QtWidgets.QCheckBox("KEEP IMAGE SEQUENCE")
-        self.keep_sequence_checkbox.setChecked(True)
+        self.keep_sequence_checkbox.setChecked(False)
         ev_layout.addWidget(self.video_codec_label)
         ev_layout.addWidget(self.video_codec_combobox)
         ev_layout.addWidget(self.keep_sequence_checkbox)
@@ -488,6 +491,11 @@ class SaveInterface(QtWidgets.QDialog):
         """Handle Export: save image sequence via hscript and log output.
         Step 1: Run `imgsave -a` with the preview path.
         """
+        # Ensure UI state and preview path are up to date before exporting
+        try:
+            self.update_widget_states()
+        except Exception:
+            pass
         # Show busy progress and disable button
         try:
             self.progress_bar.setVisible(True)
@@ -529,6 +537,11 @@ class SaveInterface(QtWidgets.QDialog):
                 QtWidgets.QApplication.processEvents()
                 QtCore.QTimer.singleShot(300, lambda: self.progress_bar.setVisible(False))
                 self.export_button.setEnabled(True)
+                # Update widgets after finishing export step
+                try:
+                    self.update_widget_states()
+                except Exception:
+                    pass
             except Exception:
                 logger.exception("Failed to restore UI state after export.")
                 pass
@@ -862,25 +875,33 @@ class SaveInterface(QtWidgets.QDialog):
         input_glob = expanded
 
         codec = self.video_codec_combobox.currentText()
-        # Determine container and ffmpeg codec flags
-        if "WEBM" in codec:
-            container = "webm"
-            # Use NVIDIA NVENC for AV1; use NVENC-friendly quality flag
-            codec_args = ["-c:v", "av1_nvenc", "-preset", "p4", "-cq", "28"]
+        # Determine container, ffmpeg codec flags, and high-fidelity pixel format to reduce chroma fringing
+        if "AV1" in codec:
+            container = "mp4"
+            # Use NVIDIA NVENC for AV1; NVENC-friendly quality flag + 4:4:4 chroma
+            codec_args = [
+                "-c:v",
+                "av1_nvenc",
+                "-preset",
+                "p3",
+                "-cq",
+                "24",
+                "-pix_fmt",
+                "yuv420p10le",
+            ]
         elif "H.264" in codec:
             container = "mp4"
-            # Use NVIDIA NVENC for H.264
-            codec_args = ["-c:v", "h264_nvenc", "-preset", "p4", "-cq", "22"]
+            # Use NVIDIA NVENC for H.264 with 4:4:4 chroma
+            codec_args = ["-c:v", "h264_nvenc", "-preset", "p4", "-cq", "22", "-pix_fmt", "yuv444p"]
         elif "H.265" in codec:
             container = "mp4"
-            # Use NVIDIA NVENC for H.265
-            codec_args = ["-c:v", "hevc_nvenc", "-preset", "p4", "-cq", "24"]
-        elif "PRORES" in codec:
-            container = "mov"
-            codec_args = ["-c:v", "prores_ks", "-profile:v", "3"]
+            # Use NVIDIA NVENC for H.265 with 4:4:4 chroma
+            codec_args = ["-c:v", "hevc_nvenc", "-preset", "p4", "-cq", "24", "-pix_fmt", "yuv444p"]
+        # ProRes removed
         else:
             container = "mp4"
-            codec_args = ["-c:v", "libx264", "-preset", "medium", "-crf", "20"]
+            # Fallback libx264; keep 4:2:0 for compatibility
+            codec_args = ["-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p"]
 
         # Output path: same directory as sequence, with video container
         out_dir = os.path.dirname(expanded)
@@ -889,6 +910,9 @@ class SaveInterface(QtWidgets.QDialog):
         if "%04d" in base_name:
             base_name = base_name.replace("%04d", "").rstrip("._")
         output_video = os.path.join(out_dir, f"{base_name}.{container}")
+        # Enforce even resolution across all codecs to avoid encoder artifacts
+        # Escape commas for Windows shell when passing through QProcess
+        codec_args += ["-vf", "crop=iw-mod(iw\\,2):ih-mod(ih\\,2)"]
         return input_glob, output_video, container, codec_args
 
     def run_ffmpeg_encode(self):
@@ -912,9 +936,8 @@ class SaveInterface(QtWidgets.QDialog):
         logger.info(f"Encoding video: {output_video}")
 
         # Build arguments for QProcess
+        # Build args; codec_args already includes appropriate -pix_fmt
         args = ["-y", "-framerate", "24", "-i", input_glob] + codec_args
-        if container == "mp4":
-            args += ["-pix_fmt", "yuv420p"]
         args += [output_video]
 
         # Show progress bar indeterminate during encode
@@ -961,7 +984,12 @@ class SaveInterface(QtWidgets.QDialog):
                     except Exception:
                         logger.warning("Failed to delete image sequence.")
             else:
-                logger.error(f"FFmpeg exited with code {code}, status {int(status)}.")
+                # Avoid casting ExitStatus to int; use string representation
+                try:
+                    status_str = getattr(status, "name", str(status))
+                except Exception:
+                    status_str = str(status)
+                logger.error(f"FFmpeg exited with code {code}, status {status_str}.")
                 logger.info(f"FFmpeg total time: {elapsed:.2f}s")
             # Restore progress bar briefly, then hide
             try:
@@ -969,6 +997,11 @@ class SaveInterface(QtWidgets.QDialog):
                 self.progress_bar.setValue(100)
                 QtWidgets.QApplication.processEvents()
                 QtCore.QTimer.singleShot(600, lambda: self.progress_bar.setVisible(False))
+            except Exception:
+                pass
+            # Refresh UI state after full export finishes
+            try:
+                self.update_widget_states()
             except Exception:
                 pass
             self._ffmpeg_proc = None

@@ -11,6 +11,8 @@ except:
 import tomllib
 from pathlib import Path
 from pprint import pprint
+import json
+import os
 
 # Prefix for all spare parameters
 PARM_PREFIX = "_lf_"
@@ -90,6 +92,45 @@ def get_prism_structure(project):
     @productversion_path@/@sequence@-@shot@_@product@_@version@@.(frame)@@extension@
     """
     pass
+
+
+def write_version_info(node_path: str, parm_name: str):
+    """
+    Create a `versioninfo.json` file next to the evaluated output file.
+
+    Args:
+        kwargs: Houdini callback kwargs containing at least the current `node`.
+        parm_name: The name of the parameter which holds the final file path expression.
+    """    
+    node = hou.node(node_path)
+    parm = node.parm(parm_name)
+    if parm is None:
+        print("write_version_info: Parameter not found:", parm_name)
+        return
+
+    filepath = parm.evalAsString()
+    if not filepath:
+        print("write_version_info: Parameter evaluated to empty string:", parm_name)
+        return
+
+    dest_folder = os.path.dirname(filepath)
+
+    # hou.text.expandString instead of hou.expandString as its deprecated
+    prism_user = hou.text.expandString("$PRISM_USER")
+    source_scene = hou.text.expandString("$HIP")
+
+    data = {
+        "comment": "",
+        "user": prism_user,
+        "sourceScene": source_scene,
+    }
+
+    Path(dest_folder).mkdir(parents=True, exist_ok=True)
+    out_path = Path(dest_folder) / "versioninfo.json"
+    # print("Writing version info to:", out_path)
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=4)
+    
 
 
 def handle_prism_versioning(kwargs):
@@ -303,7 +344,7 @@ prism_callbacks.open_folder_callback(kwargs, parm_name='{parm.name()}')
         f"{PARM_PREFIX}cshasset",
         "Custom Shot/Asset",
         1,
-        default_value=["$PRISM_SHOT$PRISM_ASSET"],
+        default_value=["$PRISM_SHOT$PRISM_ASSETPATH"],
         string_type=hou.stringParmType.Regular
     )
     cshasset.setConditional(hou.parmCondType.HideWhen, f'{{ {PARM_PREFIX}hide_helpers == 1 }}')
@@ -431,8 +472,14 @@ prism_callbacks.open_folder_callback(kwargs, parm_name='{parm.name()}')
         language=hou.exprLanguage.Hscript
     )
     
-    # filename: "cshasset_identifier_v001.0001.ext"
-    filename_expr = f'''ifs(strcmp(chs("{PARM_PREFIX}type"), "3dRender") == 0, "beauty/", "") + chs("{PARM_PREFIX}csequence") + "-" + chs("{PARM_PREFIX}cshasset") + "_" + chs("{PARM_PREFIX}identifier") + "_" + chs("{PARM_PREFIX}version_str") + chs("{PARM_PREFIX}frame_str") + chs("{PARM_PREFIX}extension")'''
+    # filename: includes optional sequence prefix and sanitized cshasset ("/" -> "-")
+    filename_expr = f'''ifs(strcmp(chs("{PARM_PREFIX}type"), "3dRender") == 0, "beauty/", "")
+        + ifs(strcmp(chs("{PARM_PREFIX}csequence"), "") == 0, "", chs("{PARM_PREFIX}csequence") + "-")
+        + strreplace(chs("{PARM_PREFIX}cshasset"), "/", "-")
+        + "_" + chs("{PARM_PREFIX}identifier")
+        + "_" + chs("{PARM_PREFIX}version_str")
+        + chs("{PARM_PREFIX}frame_str")
+        + chs("{PARM_PREFIX}extension")'''
     node.parm(f"{PARM_PREFIX}filename").setExpression(
         filename_expr,
         language=hou.exprLanguage.Hscript
@@ -442,6 +489,21 @@ prism_callbacks.open_folder_callback(kwargs, parm_name='{parm.name()}')
     hscript_expr = f'chs("{PARM_PREFIX}base") + "/" + chs("{PARM_PREFIX}shasset") + "/" + chs("{PARM_PREFIX}etype") + "/" + chs("{PARM_PREFIX}identifier") + "/" + chs("{PARM_PREFIX}version_str") + "/" + chs("{PARM_PREFIX}filename")'
     
     parm.setExpression(hscript_expr, language=hou.exprLanguage.Hscript)        
+
+    # If the node has a postrender script parm, set it to write versioninfo.json
+    postrender_parm = node.parm("postrender")
+    if postrender_parm is not None:
+        node.parm("tpostrender").set(1)
+        node.parm("lpostrender").set("python")
+        # Use a Python block: create kwargs from current node and call writer with the file parm name
+        python_block = f"""
+import prism_callbacks
+prism_callbacks.write_version_info('`opfullpath(".")`', '{parm.name()}')
+"""        
+        postrender_parm.set(python_block)
+
+        
+        
     
     
     
