@@ -1,5 +1,6 @@
 import sys
 import logging
+import logging.handlers
 from PySide6 import QtWidgets, QtCore, QtGui
 try:
     from shiboken6 import isValid as _qt_is_valid
@@ -17,7 +18,8 @@ def setup_logger():
         logger.setLevel(logging.DEBUG)
         # Primary stream handler
         handler = logging.StreamHandler(sys.stdout)
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        # Remove timestamp from log output in console
+        formatter = logging.Formatter('%(levelname)s - %(message)s')
         handler.setFormatter(formatter)
         logger.addHandler(handler)
         # Add a temporary buffer handler to capture early logs before UI exists
@@ -27,6 +29,8 @@ def setup_logger():
         logger.addHandler(buffer_handler)
         # Store buffer handler on the logger for later flush
         logger._buffer_handler = buffer_handler
+        # Allow propagation control later
+        logger.propagate = True
     return logger
 
 logger = setup_logger()
@@ -181,6 +185,12 @@ QPushButton:hover {
     font-size: 18px;
     padding: 10px;
 }
+/* Hover effect specifically for Export button */
+#ExportButton:hover {
+    background-color: #26282a;
+    border-color: #ffa65a;
+    color: #ffa65a;
+}
 
 /* Disabled State Styles */
 QLineEdit:disabled, QTextEdit:disabled, QSpinBox:disabled, QComboBox:disabled {
@@ -290,6 +300,25 @@ class SaveInterface(QtWidgets.QDialog):
         title_layout.addStretch()
         title_layout.addWidget(close_button)
 
+        # Enable click-drag moving by handling events on the title bar
+        self._drag_start_global = None
+        def _tb_mouse_press(event: QtGui.QMouseEvent):
+            if event.button() == QtCore.Qt.LeftButton:
+                self._drag_start_global = event.globalPosition().toPoint()
+                event.accept()
+        def _tb_mouse_move(event: QtGui.QMouseEvent):
+            if self._drag_start_global is not None:
+                delta = event.globalPosition().toPoint() - self._drag_start_global
+                self.move(self.x() + delta.x(), self.y() + delta.y())
+                self._drag_start_global = event.globalPosition().toPoint()
+                event.accept()
+        def _tb_mouse_release(event: QtGui.QMouseEvent):
+            self._drag_start_global = None
+            event.accept()
+        self.title_bar.mousePressEvent = _tb_mouse_press
+        self.title_bar.mouseMoveEvent = _tb_mouse_move
+        self.title_bar.mouseReleaseEvent = _tb_mouse_release
+
     def create_widgets(self):
         self.context_label = QtWidgets.QLabel("CONTEXT")
         self.context_value = QtWidgets.QLabel("ASSET - TOPHE")
@@ -330,7 +359,7 @@ class SaveInterface(QtWidgets.QDialog):
 
 
         self.preview_path_label = QtWidgets.QLabel("PREVIEW PATH")
-        self.preview_path_value = QtWidgets.QLabel("...V0001/MY_IDENTIFIER_V0001.$F4JPG")
+        self.preview_path_value = QtWidgets.QLabel("Undefined")
         self.preview_path_value.setStyleSheet("text-transform: none; font-weight: normal; color: #c0c0c0;")
         self.preview_path_value.setWordWrap(True)
 
@@ -351,7 +380,7 @@ class SaveInterface(QtWidgets.QDialog):
         ev_layout.setContentsMargins(10, 0, 0, 0)
         self.video_codec_label = QtWidgets.QLabel("VIDEO CODEC")
         self.video_codec_combobox = QtWidgets.QComboBox()
-        self.video_codec_combobox.addItems(["AV1 (WEBM)", "H.264 (MP4)", "PRORES (MOV)"])
+        self.video_codec_combobox.addItems(["AV1 (WEBM)", "H.264 (MP4)", "H.265 (MP4)", "PRORES (MOV)"])
         self.video_codec_combobox.setSizePolicy(QtWidgets.QSizePolicy.MinimumExpanding, QtWidgets.QSizePolicy.Fixed)
         # New: keep image sequence toggle (default true)
         self.keep_sequence_checkbox = QtWidgets.QCheckBox("KEEP IMAGE SEQUENCE")
@@ -380,13 +409,20 @@ class SaveInterface(QtWidgets.QDialog):
         self.console_output.setReadOnly(True)
         self.console_output.setMinimumHeight(100)
         self.console_output.setStyleSheet("background-color: #1a1c1e; color: #c0c0c0; border: 1px solid #4a4d50;")
+        # Use a readable monospace font for console
+        try:
+            mono = QtGui.QFont("Consolas")
+            mono.setPointSize(10)
+            self.console_output.setFont(mono)
+        except Exception:
+            pass
 
         # Open in.. toolbutton with dropdown
         self.open_in_button = QtWidgets.QToolButton()
         self.open_in_button.setText("Open in..")
         self.open_in_button.setPopupMode(QtWidgets.QToolButton.InstantPopup)
         open_menu = QtWidgets.QMenu(self.open_in_button)
-        self.menu_open_explorer = open_menu.addAction("Open in explorer")
+        self.menu_open_explorer = open_menu.addAction("Open Folder")
         self.menu_open_prism = open_menu.addAction("Open in Prism")
         self.open_in_button.setMenu(open_menu)
         self.menu_open_explorer.triggered.connect(self.open_in_explorer)
@@ -468,22 +504,33 @@ class SaveInterface(QtWidgets.QDialog):
         # Execute hscript and capture output
         try:
             import hou
+            # Let the UI show the spinner briefly
+            QtWidgets.QApplication.processEvents()
+            QtCore.QThread.msleep(150)
             out, err = hou.hscript(f'imgsave -a "{escaped_path}"')
             if out:
                 logger.info(out.strip())
             if err:
                 logger.error(err.strip())
             logger.info("Image sequence save completed.")
+            # Step 2: If Export Video is enabled, encode sequence to a video
+            try:
+                if self.export_video_group.isChecked():
+                    self.run_ffmpeg_encode()
+            except Exception as ff_err:
+                logger.exception(f"FFmpeg encode failed: {ff_err}")
         except Exception as e:
-            logger.exception(f"imgsave failed: {e}")
+            logger.exception(f"imgsave failed: {e}")            
         finally:
             # Restore UI state
             try:
                 self.progress_bar.setRange(0, 100)
-                self.progress_bar.setValue(0)
-                self.progress_bar.setVisible(False)
+                self.progress_bar.setValue(100)
+                QtWidgets.QApplication.processEvents()
+                QtCore.QTimer.singleShot(300, lambda: self.progress_bar.setVisible(False))
                 self.export_button.setEnabled(True)
             except Exception:
+                logger.exception("Failed to restore UI state after export.")
                 pass
 
     def update_widget_states(self):
@@ -502,6 +549,17 @@ class SaveInterface(QtWidgets.QDialog):
             pass
 
         # Avoid resizing/jumping on toggle; size is fixed at show
+
+        # Auto-version: look up next version when enabled
+        try:
+            if self.auto_version_checkbox.isChecked():
+                next_ver = self.lookup_next_version()
+                if next_ver:
+                    self.version_spinbox.blockSignals(True)
+                    self.version_spinbox.setValue(next_ver)
+                    self.version_spinbox.blockSignals(False)
+        except Exception:
+            pass
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -526,12 +584,22 @@ class SaveInterface(QtWidgets.QDialog):
         # Create a logging handler that writes to the QTextEdit
         if not hasattr(self, 'console_output'):
             return
+        # Ensure logs do not propagate to Houdini/MPlay root logger
+        logger.propagate = False
+        # Remove any StreamHandler to stdout so only UI console receives logs
+        try:
+            for h in list(logger.handlers):
+                if isinstance(h, logging.StreamHandler) and getattr(h, 'stream', None) is sys.stdout:
+                    logger.removeHandler(h)
+        except Exception:
+            pass
         class QTextEditHandler(logging.Handler):
             def __init__(self, widget):
                 super().__init__()
                 self.widget = widget
                 self.setLevel(logging.DEBUG)
-                fmt = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+                # Match global formatter: no timestamp
+                fmt = logging.Formatter('%(levelname)s - %(message)s')
                 self.setFormatter(fmt)
             def emit(self, record):
                 # Guard against deleted Qt objects
@@ -545,6 +613,21 @@ class SaveInterface(QtWidgets.QDialog):
                         QtCore.Qt.QueuedConnection,
                         QtCore.Q_ARG(str, msg)
                     )
+                    # Auto-scroll to bottom after appending
+                    try:
+                        QtCore.QMetaObject.invokeMethod(
+                            self.widget,
+                            "moveCursor",
+                            QtCore.Qt.QueuedConnection,
+                            QtCore.Q_ARG(QtGui.QTextCursor.MoveOperation, QtGui.QTextCursor.End)
+                        )
+                        QtCore.QMetaObject.invokeMethod(
+                            self.widget,
+                            "ensureCursorVisible",
+                            QtCore.Qt.QueuedConnection
+                        )
+                    except Exception:
+                        pass
                 except RuntimeError:
                     # Widget likely deleted; ignore
                     pass
@@ -653,6 +736,43 @@ class SaveInterface(QtWidgets.QDialog):
         # print(full_path)
         self.preview_path_value.setText(full_path)
 
+    def lookup_next_version(self) -> int:
+        """Scan Playblasts/identifier folder for latest v#### and return next."""
+        import os, re
+        try:
+            import hou
+        except Exception:
+            return None
+        prism_job = hou.getenv("PRISMJOB") or hou.getenv("PRISM_JOB") or "$PRISMJOB"
+        prism_shot = hou.getenv("PRISM_SHOT")
+        prism_asset = hou.getenv("PRISM_ASSET")
+        prism_sequence = hou.getenv("PRISM_SEQUENCE")
+        ctype = "shot" if prism_shot else "asset"
+        cshasset = prism_shot or prism_asset
+        if not cshasset:
+            return None
+        if ctype == "shot":
+            if not prism_sequence:
+                return None
+            shasset_path = f"Shots/{prism_sequence}/{cshasset}"
+        else:
+            shasset_path = f"Assets/{cshasset}"
+        base = f"{prism_job}/03_Production"
+        identifier = (self.identifier_combo.currentText().strip() or "identifier")
+        lookup_dir = f"{base}/{shasset_path}/Playblasts/{identifier}"
+        if not os.path.isdir(lookup_dir):
+            return 1
+        versions = []
+        pat = re.compile(r"^v(\d+)$")
+        try:
+            for d in os.listdir(lookup_dir):
+                m = pat.match(d)
+                if m and os.path.isdir(os.path.join(lookup_dir, d)):
+                    versions.append(int(m.group(1)))
+        except OSError:
+            return 1
+        return (max(versions) + 1) if versions else 1
+
     def populate_identifiers(self, base: str, shasset_path: str):
         """Fill the identifier dropdown with existing folders under Playblasts."""
         import os
@@ -665,23 +785,44 @@ class SaveInterface(QtWidgets.QDialog):
             except OSError:
                 items = []
 
+        # Preserve current text while updating list
+        current_text = self.identifier_combo.currentText()
         current_items = [self.identifier_combo.itemText(i) for i in range(self.identifier_combo.count())]
         if items != current_items:
             self.identifier_combo.blockSignals(True)
             self.identifier_combo.clear()
             if items:
                 self.identifier_combo.addItems(items)
+            if current_text:
+                self.identifier_combo.setEditText(current_text)
             self.identifier_combo.blockSignals(False)
 
     def open_in_explorer(self):
-        # Open the preview path folder in OS explorer
+        """Open folder like Prism's callback: try up to 3 parent levels."""
         try:
-            path = self.preview_path_value.text()
             import os
-            folder = os.path.dirname(path)
-            if folder:
-                QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(folder))
+            import hou
+            path = hou.text.expandString(self.preview_path_value.text()).strip()
+
+            if not path:
+                return
+            folder_path = os.path.dirname(path)
+            original = folder_path
+            for _ in range(4):
+                if os.path.exists(folder_path):
+                    QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(folder_path))
+                    return
+                parent = os.path.dirname(folder_path)
+                if parent == folder_path:
+                    break
+                folder_path = parent
+            try:
+                import hou
+                hou.ui.displayMessage(f"Folder does not exist: {original}", severity=hou.severityType.Warning)
+            except Exception:
+                logger.warning(f"Folder does not exist: {original}")
         except Exception:
+            logger.exception("Failed to open folder in explorer.")
             pass
 
     def open_in_prism(self):
@@ -689,16 +830,172 @@ class SaveInterface(QtWidgets.QDialog):
         logger.info("Open in Prism triggered")
 
 
-    # --- Window Dragging Methods ---
-    def mousePressEvent(self, event):
-        if event.button() == QtCore.Qt.LeftButton:
-            self.old_pos = event.globalPosition().toPoint()
-
+        # --- Window Dragging Methods ---
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(100)
+        QtWidgets.QApplication.processEvents()
+        QtCore.QTimer.singleShot(600, lambda: self.progress_bar.setVisible(False))
     def mouseMoveEvent(self, event):
         if self.old_pos is not None:
             delta = event.globalPosition().toPoint() - self.old_pos
             self.move(self.x() + delta.x(), self.y() + delta.y())
-            self.old_pos = event.globalPosition().toPoint()
+
+    def _build_sequence_glob_and_output(self):
+        """Return (input_glob, output_video_path, container_ext, codec_args).
+            # Re-enable stdout handler if needed by environment by adding a NullHandler
+            try:
+                if not logger.handlers:
+                    logger.addHandler(logging.NullHandler())
+            except Exception:
+                pass
+        Input glob is expanded file path with %04d replacing $F4.
+        """
+        import os
+        try:
+            import hou
+        except Exception:
+            raise RuntimeError("hou module not found")
+
+        # expanded = 
+        expanded = hou.text.expandString(self.preview_path_value.text().strip().replace("$F4", "%04d"))
+        # Replace frame token with printf-style pattern
+        input_glob = expanded
+
+        codec = self.video_codec_combobox.currentText()
+        # Determine container and ffmpeg codec flags
+        if "WEBM" in codec:
+            container = "webm"
+            # Use NVIDIA NVENC for AV1; use NVENC-friendly quality flag
+            codec_args = ["-c:v", "av1_nvenc", "-preset", "p4", "-cq", "28"]
+        elif "H.264" in codec:
+            container = "mp4"
+            # Use NVIDIA NVENC for H.264
+            codec_args = ["-c:v", "h264_nvenc", "-preset", "p4", "-cq", "22"]
+        elif "H.265" in codec:
+            container = "mp4"
+            # Use NVIDIA NVENC for H.265
+            codec_args = ["-c:v", "hevc_nvenc", "-preset", "p4", "-cq", "24"]
+        elif "PRORES" in codec:
+            container = "mov"
+            codec_args = ["-c:v", "prores_ks", "-profile:v", "3"]
+        else:
+            container = "mp4"
+            codec_args = ["-c:v", "libx264", "-preset", "medium", "-crf", "20"]
+
+        # Output path: same directory as sequence, with video container
+        out_dir = os.path.dirname(expanded)
+        base_name = os.path.splitext(os.path.basename(expanded))[0]
+        # replace %04d with base name without frame token
+        if "%04d" in base_name:
+            base_name = base_name.replace("%04d", "").rstrip("._")
+        output_video = os.path.join(out_dir, f"{base_name}.{container}")
+        return input_glob, output_video, container, codec_args
+
+    def run_ffmpeg_encode(self):
+        """Run Houdini's hffmpeg using QProcess to keep UI responsive, and log elapsed time."""
+        import os, time
+        try:
+            import hou
+        except Exception:
+            raise RuntimeError("hou module not found")
+
+        hfs = hou.getenv("HFS")
+        if not hfs:
+            raise RuntimeError("HFS environment variable not set; cannot locate hffmpeg.exe")
+        ffmpeg_path = os.path.join(hfs, "bin", "hffmpeg.exe")
+        if not os.path.exists(ffmpeg_path):
+            raise RuntimeError(f"hffmpeg not found at: {ffmpeg_path}")
+
+        input_glob, output_video, container, codec_args = self._build_sequence_glob_and_output()
+        # log input glob
+        logger.info(f"Input Sequence: {input_glob}")
+        logger.info(f"Encoding video: {output_video}")
+
+        # Build arguments for QProcess
+        args = ["-y", "-framerate", "24", "-i", input_glob] + codec_args
+        if container == "mp4":
+            args += ["-pix_fmt", "yuv420p"]
+        args += [output_video]
+
+        # Show progress bar indeterminate during encode
+        try:
+            self.progress_bar.setVisible(True)
+            self.progress_bar.setRange(0, 0)
+            QtWidgets.QApplication.processEvents()
+        except Exception:
+            pass
+
+        # Use QProcess for safer execution within Qt app
+        self._ffmpeg_proc = QtCore.QProcess(self)
+        self._ffmpeg_start_ts = time.time()
+
+        def _read_stdout():
+            try:
+                data = self._ffmpeg_proc.readAllStandardOutput().data().decode(errors='ignore')
+                for line in data.splitlines():
+                    if line:
+                        logger.info(line)
+            except Exception:
+                pass
+        def _read_stderr():
+            try:
+                data = self._ffmpeg_proc.readAllStandardError().data().decode(errors='ignore')
+                for line in data.splitlines():
+                    if line:
+                        logger.info(line)
+            except Exception:
+                pass
+        def _finished(code, status):
+            elapsed = 0.0
+            try:
+                elapsed = time.time() - (self._ffmpeg_start_ts or time.time())
+            except Exception:
+                pass
+            if code == 0 and status == QtCore.QProcess.ExitStatus.NormalExit:
+                logger.info("FFmpeg encode completed successfully.")
+                logger.info(f"FFmpeg total time: {elapsed:.2f}s")
+                if not self.keep_sequence_checkbox.isChecked():
+                    try:
+                        self._delete_sequence_files(input_glob)
+                        logger.info("Image sequence deleted.")
+                    except Exception:
+                        logger.warning("Failed to delete image sequence.")
+            else:
+                logger.error(f"FFmpeg exited with code {code}, status {int(status)}.")
+                logger.info(f"FFmpeg total time: {elapsed:.2f}s")
+            # Restore progress bar briefly, then hide
+            try:
+                self.progress_bar.setRange(0, 100)
+                self.progress_bar.setValue(100)
+                QtWidgets.QApplication.processEvents()
+                QtCore.QTimer.singleShot(600, lambda: self.progress_bar.setVisible(False))
+            except Exception:
+                pass
+            self._ffmpeg_proc = None
+
+        self._ffmpeg_proc.readyReadStandardOutput.connect(_read_stdout)
+        self._ffmpeg_proc.readyReadStandardError.connect(_read_stderr)
+        self._ffmpeg_proc.finished.connect(_finished)
+
+        self._ffmpeg_proc.start(ffmpeg_path, args)
+        if not self._ffmpeg_proc.waitForStarted(3000):
+            logger.error("Failed to start FFmpeg process.")
+            try:
+                self.progress_bar.setVisible(False)
+            except Exception:
+                pass
+
+    def _delete_sequence_files(self, input_glob: str):
+        """Delete all files matching the printf-style sequence glob."""
+        import os, glob
+        # Convert printf-style %04d to glob pattern
+        pat = input_glob.replace("%04d", "????")
+        for f in glob.glob(pat):
+            try:
+                os.remove(f)
+            except Exception:
+                pass
+        # No UI interaction here; silent cleanup only
 
     def mouseReleaseEvent(self, event):
         self.old_pos = None
