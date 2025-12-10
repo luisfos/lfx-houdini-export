@@ -117,10 +117,16 @@ def write_version_info(node_path: str, parm_name: str):
 
     # hou.text.expandString instead of hou.expandString as its deprecated
     prism_user = hou.text.expandString("$PRISM_USER")
-    source_scene = hou.text.expandString("$HIP")
+    source_scene = hou.text.expandString("$HIPFILE")
+    # replace source scene absolute path with prism_job
+    source_scene = source_scene.replace(hou.text.expandString("$PRISM_JOB"), "$PRISM_JOB")
+
+    # Optional user comment from spare parameter
+    comment_parm = node.parm(f"{PARM_PREFIX}comment")
+    comment_val = comment_parm.evalAsString() if comment_parm is not None else ""
 
     data = {
-        "comment": "",
+        "comment": comment_val,
         "user": prism_user,
         "sourceScene": source_scene,
     }
@@ -152,6 +158,8 @@ def handle_prism_versioning(kwargs):
     parm = parms[0]
     node = parm.node()
     optype = node.type().name()
+    # Create autoversion toggle parameter only if node has a prerender parm
+    has_prerender = node.parm("prerender") is not None
     
     # Load configuration and get optype-specific settings
     config = load_config()
@@ -249,6 +257,11 @@ return prism_callbacks.get_existing_identifiers(kwargs)
 """,
         item_generator_script_language=hou.scriptLanguage.Python
     )
+    # When identifier changes, press Latest to refresh version suggestion
+    identifier.setScriptCallback(f"""
+kwargs['node'].parm('{PARM_PREFIX}version_lookup').pressButton()
+""")
+    identifier.setScriptCallbackLanguage(hou.scriptLanguage.Python)
     
     # Create version parameter
     version = hou.IntParmTemplate(
@@ -272,6 +285,12 @@ prism_callbacks.version_lookup_callback(kwargs)
     )
 
     folder.setTags({"sidefx::header_parm": f"{PARM_PREFIX}version"})
+
+    # Disable version parm when autoversion is enabled (only if autoversion exists)
+    if has_prerender:
+        version.setConditional(
+            hou.parmCondType.DisableWhen, f"{{ {PARM_PREFIX}autoversion == 1 }}"
+        )
     
     
     # Create extension parameter (dropdown menu with replace type)
@@ -313,6 +332,21 @@ prism_callbacks.open_folder_callback(kwargs, parm_name='{parm.name()}')
         "Time Dependent",
         default_value=time_dependent_default
     )
+
+    
+    if has_prerender:
+        autoversion = hou.ToggleParmTemplate(
+            f"{PARM_PREFIX}autoversion",
+            "Auto Version",
+            default_value=True
+        )
+        # When toggled on, press Latest to auto-pick next version
+        autoversion.setScriptCallback(f"""
+autoversion = kwargs['node'].parm('{PARM_PREFIX}autoversion')
+if autoversion and autoversion.evalAsInt() == 1:
+    kwargs['node'].parm('{PARM_PREFIX}version_lookup').pressButton()
+""")
+        autoversion.setScriptCallbackLanguage(hou.scriptLanguage.Python)
     
     # Create hide_helpers toggle parameter
     hide_helpers = hou.ToggleParmTemplate(
@@ -417,17 +451,34 @@ prism_callbacks.open_folder_callback(kwargs, parm_name='{parm.name()}')
     )
     filename.setConditional(hou.parmCondType.HideWhen, f'{{ {PARM_PREFIX}hide_helpers == 1 }}')
     
+    # User comment to include in versioninfo.json
+    comment_parm = hou.StringParmTemplate(
+        f"{PARM_PREFIX}comment",
+        "Comment",
+        1,
+        default_value=[""],
+        string_type=hou.stringParmType.Regular,
+        tags={
+            "editor": "1",
+            "editorlines": "5-8",
+        },
+    )
+    
     # Add parameters to folder
     folder.addParmTemplate(type_parm)
     folder.addParmTemplate(context_parm)
     folder.addParmTemplate(context_label)
     folder.addParmTemplate(identifier)
+    # Place autoversion before version when present
+    if has_prerender:
+        folder.addParmTemplate(autoversion)
     folder.addParmTemplate(version)
     folder.addParmTemplate(version_lookup_button)
     folder.addParmTemplate(time_dependent)
     folder.addParmTemplate(frame)
     folder.addParmTemplate(extension)
     folder.addParmTemplate(open_in_button)
+    folder.addParmTemplate(comment_parm)
     folder.addParmTemplate(hide_helpers)
     folder.addParmTemplate(ctype)
     folder.addParmTemplate(cshasset)
@@ -465,6 +516,8 @@ prism_callbacks.open_folder_callback(kwargs, parm_name='{parm.name()}')
         f'"v" + padzero(4, ch("{PARM_PREFIX}version"))',
         language=hou.exprLanguage.Hscript
     )
+
+   
     
     # frame_str: ".0001" if time_dependent, else ""
     node.parm(f"{PARM_PREFIX}frame_str").setExpression(
@@ -502,7 +555,34 @@ prism_callbacks.write_version_info('`opfullpath(".")`', '{parm.name()}')
 """        
         postrender_parm.set(python_block)
 
-        
+    # If the node has a prerender script parm, set it to press latest version
+    prerender_parm = node.parm("prerender")
+    if prerender_parm is not None:
+        node.parm("tprerender").set(1)
+        node.parm("lprerender").set("python")
+        pre_python = f"""
+hou.parm('`opfullpath(".")`/'+'{PARM_PREFIX}version_lookup').pressButton()
+v = hou.parm('`opfullpath(".")`/'+'{PARM_PREFIX}version')
+v.set(v.evalAsInt() + 1)
+"""
+        prerender_parm.set(pre_python)
+
+    # ensure version lookup is run once to set initial version
+    node.parm(f'{PARM_PREFIX}version_lookup').pressButton()
+
+    ### TIME DEPENDENT DEFAULTS
+    # Link time_dependent based on node type specifics
+    
+    td_parm = node.parm(f"{PARM_PREFIX}time_dependent")
+    
+    optype_name = node.type().name().lower()
+    # For filecache types, mirror the node's existing 'timedependent' parm
+    if "filecache" in optype_name and node.parm("timedependent") is not None:
+        td_parm.set(node.parm("timedependent"))
+    # For rop_* nodes, link to trange == "off" (single frame -> not time dependent)
+    # elif optype_name.startswith("rop_geo") and node.parm("trange") is not None:
+    #     td_parm.setExpression('ifs(strcmp(chs("trange"), "off") == 0, 0, 1)', language=hou.exprLanguage.Hscript)
+    
         
     
     
@@ -575,8 +655,10 @@ def version_lookup_callback(kwargs):
             
     if versions:
         latest_version = max(versions)
-        next_version = latest_version + 1
-        node.parm(f'{PARM_PREFIX}version').set(next_version)
+        # latest_version = latest_version + 1
+        # we set to the latest existing version for read purposes.
+        # prerender script will increment it for write purposes.
+        node.parm(f"{PARM_PREFIX}version").set(latest_version)
     else:
         # If no version folders are found, the first version is 1.
         node.parm(f'{PARM_PREFIX}version').set(1)

@@ -2,6 +2,9 @@ import sys
 import logging
 import logging.handlers
 from PySide6 import QtWidgets, QtCore, QtGui
+import os
+import json
+from pprint import pprint
 try:
     from shiboken6 import isValid as _qt_is_valid
 except Exception:
@@ -34,6 +37,69 @@ def setup_logger():
     return logger
 
 logger = setup_logger()
+
+# --- Identifier discovery (copied/adapted from prism_callbacks) ---
+def get_existing_identifiers_for_mplay() -> list[str]:
+    """
+    Finds existing identifiers in the output directory to populate the identifier dropdown.
+
+    Mirrors the logic of prism_callbacks.get_existing_identifiers but derives paths
+    from Prism environment variables for MPlay (Playblasts context).
+    Returns a simple list of identifier names.
+    """
+    import os
+    
+    # Base path
+    base_path = os.path.join(hou.getenv('PRISM_JOB') or '', '03_Production')
+    prism_shot = hou.getenv('PRISM_SHOT') or ''
+    prism_seq = hou.getenv('PRISM_SEQUENCE') or ''
+    prism_assetpath = hou.getenv('PRISM_ASSETPATH') or ''
+
+    if prism_shot:
+        shasset_path = os.path.join('Shots', prism_seq, prism_shot)
+    else:
+        shasset_path = os.path.join('Assets', prism_assetpath)
+
+    # MPlay deals with playblasts
+    etype_path = 'Playblasts'
+
+    lookup_dir = os.path.join(base_path, shasset_path, etype_path)
+    if not os.path.isdir(lookup_dir):
+        return []
+
+    try:
+        subfolders = [d for d in os.listdir(lookup_dir) if os.path.isdir(os.path.join(lookup_dir, d))]
+        return sorted(subfolders)
+    except OSError:
+        return []
+
+
+# --- Version Info Writer ---
+def write_version_info(filepath: str, comment: str):
+    """
+    Write a `versioninfo.json` next to the given file path.
+
+    Args:
+        filepath: The output file path (image/movie) produced by imgsave.
+        comment: User-entered comment to store in the JSON.
+    """
+    dest_folder = os.path.dirname(filepath)
+
+    
+    prism_user = hou.getenv("PRISM_USER")
+    source_scene = hou.getenv("HIPFILE")
+    source_scene = source_scene.replace(hou.getenv("PRISM_JOB"), "$PRISM_JOB")
+
+    data = {
+        "comment": comment or "",
+        "user": prism_user,
+        "sourceScene": source_scene,
+    }
+
+    # os.makedirs(dest_folder, exist_ok=True)
+    out_path = os.path.join(dest_folder, "versioninfo.json")
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=4)
 
 # --- Global variable to hold dialog reference ---
 dialog_instance = None
@@ -327,19 +393,31 @@ class SaveInterface(QtWidgets.QDialog):
         self.identifier_label = QtWidgets.QLabel("IDENTIFIER")
         # Single editable dropdown for identifier
         self.identifier_combo = QtWidgets.QComboBox()
+        # self.identifier_combo.addItems(['jpg','test','bob'])
+        
         self.identifier_combo.setEditable(True)
-        self.identifier_combo.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+        self.identifier_combo.setSizePolicy(
+            QtWidgets.QSizePolicy.MinimumExpanding, QtWidgets.QSizePolicy.Fixed
+        )
         self.identifier_combo.setPlaceholderText("Name of Playblast")
         # Default identifier from PRISM_TASK
         try:
             import hou
             task_default = hou.getenv("PRISM_TASK") or ""
-            if task_default:
+            if task_default:                
                 self.identifier_combo.setEditText(task_default)
         except Exception:
             pass
+        # Populate dropdown with existing identifiers discovered on disk
+        
+        items = get_existing_identifiers_for_mplay()
+        if items:
+            self.identifier_combo.addItems(items)
+        
+        
+        
         # Update preview when identifier changes
-        self.identifier_combo.editTextChanged.connect(self.update_widget_states)
+        # self.identifier_combo.editTextChanged.connect(self.update_widget_states)
 
         self.auto_version_checkbox = QtWidgets.QCheckBox("AUTO VERSION")
         self.auto_version_checkbox.setChecked(True)
@@ -353,7 +431,7 @@ class SaveInterface(QtWidgets.QDialog):
 
         self.format_label = QtWidgets.QLabel("FORMAT")
         self.format_combobox = QtWidgets.QComboBox()
-        self.format_combobox.addItems(["JPG", "PNG", "EXR", "TIF"])
+        self.format_combobox.addItems(["JPG", "EXR",])
         self.format_combobox.setSizePolicy(QtWidgets.QSizePolicy.MinimumExpanding, QtWidgets.QSizePolicy.Fixed)
         # Update preview when format changes
         self.format_combobox.currentTextChanged.connect(self.update_widget_states)
@@ -515,12 +593,32 @@ class SaveInterface(QtWidgets.QDialog):
             # Let the UI show the spinner briefly
             QtWidgets.QApplication.processEvents()
             QtCore.QThread.msleep(150)
-            out, err = hou.hscript(f'imgsave -a "{escaped_path}"')
+            # Get frame range from hou.hscript("frange") output like: 'Frame range: 1 to 16\n'
+            fr_out, _ = hou.hscript("frange")
+            start_frame, end_frame = None, None
+            
+            # parse numbers
+            parts = fr_out.strip().replace("Frame range:", "").split("to")
+            if len(parts) == 2:
+                start_frame = int(parts[0].strip())
+                end_frame = int(parts[1].strip())
+        
+            if start_frame is not None and end_frame is not None:
+                imgsave_cmd = f'imgsave -f {start_frame} {end_frame} "{escaped_path}"'
+            else:
+                # fallback to all frames
+                imgsave_cmd = f'imgsave -a "{escaped_path}"'
+            out, err = hou.hscript(imgsave_cmd)
             if out:
                 logger.info(out.strip())
             if err:
                 logger.error(err.strip())
             logger.info("Image sequence save completed.")
+
+            # Step 1.5: Write versioninfo.json next to first frame
+            logger.info("Writing versioninfo.json...")
+            write_version_info(filepath=hou.text.expandString(output_path), comment=self.comment_edit.toPlainText().strip())
+            logger.info("versioninfo.json written.")
             # Step 2: If Export Video is enabled, encode sequence to a video
             try:
                 if self.export_video_group.isChecked():
@@ -694,7 +792,7 @@ class SaveInterface(QtWidgets.QDialog):
         # Fetch environment variables
         prism_job = "$PRISM_JOB"#hou.getenv("PRISMJOB")
         prism_shot = hou.getenv("PRISM_SHOT")
-        prism_asset = hou.getenv("PRISM_ASSET")
+        prism_asset = hou.getenv("PRISM_ASSETPATH")
         prism_sequence = hou.getenv("PRISM_SEQUENCE")
         prism_department = hou.getenv("PRISM_DEPARTMENT") or "dept"
         prism_task = hou.getenv("PRISM_TASK") or "task"
@@ -729,10 +827,10 @@ class SaveInterface(QtWidgets.QDialog):
         self.context_value.setText(shasset_path)
 
         # Populate identifier dropdown from existing folders
-        try:
-            self.populate_identifiers(base, shasset_path)
-        except Exception:
-            pass
+        # try:
+        #     self.populate_identifiers(base, shasset_path)
+        # except Exception:
+        #     pass
 
         # Compose identifier, version string, frame and extension
         identifier = (self.identifier_combo.currentText().strip() or "identifier")
@@ -758,7 +856,7 @@ class SaveInterface(QtWidgets.QDialog):
             return None
         prism_job = hou.getenv("PRISMJOB") or hou.getenv("PRISM_JOB") or "$PRISMJOB"
         prism_shot = hou.getenv("PRISM_SHOT")
-        prism_asset = hou.getenv("PRISM_ASSET")
+        prism_asset = hou.getenv("PRISM_ASSETPATH")
         prism_sequence = hou.getenv("PRISM_SEQUENCE")
         ctype = "shot" if prism_shot else "asset"
         cshasset = prism_shot or prism_asset
@@ -935,9 +1033,10 @@ class SaveInterface(QtWidgets.QDialog):
         logger.info(f"Input Sequence: {input_glob}")
         logger.info(f"Encoding video: {output_video}")
 
-        # Build arguments for QProcess
+        # Build arguments for QProcess using scene FPS
         # Build args; codec_args already includes appropriate -pix_fmt
-        args = ["-y", "-framerate", "24", "-i", input_glob] + codec_args
+        fps = int(hou.fps())
+        args = ["-y", "-framerate", str(fps), "-i", input_glob] + codec_args
         args += [output_video]
 
         # Show progress bar indeterminate during encode
@@ -1036,18 +1135,10 @@ class SaveInterface(QtWidgets.QDialog):
 
 def main(kwargs):
     global dialog_instance
-    logger.debug(f"main called with kwargs: {kwargs}")
+    # logger.debug(f"main called with kwargs: {kwargs}")
     action_id = kwargs.get("toolname")
-    import hou
-    # print(hou.hipFile.path())
-    # print(hou.getenv('HIP'))
-    # print(hou.getenv('PRISMJOB'))
-    # print(hou.getenv('PRISM_SHOT'))
-    # print(hou.getenv('PRISM_SEQUENCE'))
-    # print(hou.getenv('DRIVER'))
-    # print(hou.text.expandString("$HIP"))
-    # print(hou.hscript("echo $HIP"))
-    
+    # import hou
+        
     if action_id == "Save...":
         logger.info("'Save...' action triggered.")
         if dialog_instance and dialog_instance.isVisible():
@@ -1064,9 +1155,40 @@ def main(kwargs):
 
     elif action_id == "Quicksave":
         logger.info("Quicksave action triggered")
-    elif action_id == "Debug":
+    elif action_id == "debug":
+
+        # MPlay variables are missing?
+        # Custom variables like PRISM_JOB are passed through
+        # builtins like HIPFILE and HIPNAME are lost to defaults
+        # HIP comes through ONLY with hou.getenv() but not other methods
+        print(hou.getenv("PRISM_JOB"))# ✅ S:/RockinVFX/01_Sandbox
+        print(hou.getenv("HIP"))  #     ✅ S:/RockinVFX/01_Sandbox/03_Production/Assets/mifolder/anasset/Scenefiles/cpt/Concept
+        print(hou.getenv("HIPFILE"))  # ❌ C:/Users/luisf/untitled.hip
+        print(hou.getenv("HIPNAME"))  # ❌ untitled
+        print(hou.text.expandString("$PRISM_JOB"))# ✅ S:/RockinVFX/01_Sandbox
+        print(hou.text.expandString("$HIP"))  #     ❌ C:/Users/luisf
+        print(hou.text.expandString("$HIPFILE"))  # ❌ C:/Users/luisf/untitled.hip
+        print(hou.hscript("echo $PRISM_JOB"))  # ✅ ('S:/RockinVFX/01_Sandbox\n', '')
+        print(hou.hscript("echo $HIP"))  #       ❌ ('C:/Users/luisf\n', '')
+        print(hou.hscript("echo $HIPFILE"))  #   ❌ ('C:/Users/luisf/untitled.hip\n', '')
+        print(os.environ['PRISM_JOB'])# ✅  S:/RockinVFX/01_Sandbox
+        print(os.environ['HIP'])  #     ❌  C:/Users/luisf
+        print(os.environ['HIPFILE'])  # ❌  C:/Users/luisf/untitled.hip
+
+        print(hou.text.expandString("$RFSTART"))
+        print(hou.text.expandString("$RFEND"))
+        print(hou.text.expandString("$FPS")) # good
+
+        print(hou.getenv("FPS")) # wrong
+        print(hou.fps()) # good
+        print(hou.playbar.playbackRange())
+        print(hou.playbar.selectionRange())
+        print(hou.hscript("frange"))
+        print(hou.hscript("echo $RFSTART"))
+
+
         logger.info("Debug action triggered")
-    elif action_id == "Reload":
+    elif action_id == "reload":
         logger.info("prism_mplay module reloaded.")
     else:
         logger.warning(f"Unknown action: {action_id}")
