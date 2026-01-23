@@ -390,34 +390,15 @@ class SaveInterface(QtWidgets.QDialog):
         self.context_value = QtWidgets.QLabel("ASSET - TOPHE")
         self.context_value.setStyleSheet("text-transform: none; font-weight: normal; color: #c0c0c0;")
 
-        self.identifier_label = QtWidgets.QLabel("IDENTIFIER")
-        # Single editable dropdown for identifier
-        self.identifier_combo = QtWidgets.QComboBox()
-        # self.identifier_combo.addItems(['jpg','test','bob'])
-        
+        self.identifier_label = QtWidgets.QLabel("IDENTIFIER")        
+
+        self.identifier_combo = QtWidgets.QComboBox()                
         self.identifier_combo.setEditable(True)
-        self.identifier_combo.setSizePolicy(
-            QtWidgets.QSizePolicy.MinimumExpanding, QtWidgets.QSizePolicy.Fixed
-        )
-        self.identifier_combo.setPlaceholderText("Name of Playblast")
-        # Default identifier from PRISM_TASK
-        try:
-            import hou
-            task_default = hou.getenv("PRISM_TASK") or ""
-            if task_default:                
-                self.identifier_combo.setEditText(task_default)
-        except Exception:
-            pass
-        # Populate dropdown with existing identifiers discovered on disk
-        
-        items = get_existing_identifiers_for_mplay()
-        if items:
-            self.identifier_combo.addItems(items)
-        
-        
-        
-        # Update preview when identifier changes
-        # self.identifier_combo.editTextChanged.connect(self.update_widget_states)
+        self.identifier_combo.setSizePolicy(QtWidgets.QSizePolicy.MinimumExpanding, QtWidgets.QSizePolicy.Fixed)
+        self.identifier_combo.setPlaceholderText("Name of Playblast")       
+        self.identifier_combo.setEditText(hou.getenv("PRISM_TASK") or "")                
+        self.identifier_combo.addItems(get_existing_identifiers_for_mplay())                              
+        self.identifier_combo.editTextChanged.connect(self.update_widget_states)
 
         self.auto_version_checkbox = QtWidgets.QCheckBox("AUTO VERSION")
         self.auto_version_checkbox.setChecked(True)
@@ -582,8 +563,64 @@ class SaveInterface(QtWidgets.QDialog):
         except Exception:
             pass
 
+        # Build path fresh from function (avoid stale preview)
+        try:
+            output_path, _ = self._build_playblast_path()
+        except Exception as e:
+            logger.error(f"Cannot export: {e}")
+            # Restore UI state
+            try:
+                self.progress_bar.setVisible(False)
+                self.export_button.setEnabled(True)
+            except Exception:
+                pass
+            return
+
+        # Overwrite prevention: if any target sequence frames already exist, abort
+        try:
+            import hou
+            # Determine current frame range
+            fr_out, _ = hou.hscript("frange")
+            start_frame, end_frame = None, None
+            parts = fr_out.strip().replace("Frame range:", "").split("to")
+            if len(parts) == 2:
+                start_frame = int(parts[0].strip())
+                end_frame = int(parts[1].strip())
+            # Build a glob to check for existing files
+            first_frame = start_frame if start_frame is not None else 1
+            # Expand $PRISM_JOB and frame token
+            check_first = hou.text.expandString(output_path.replace("$F4", f"{first_frame:04d}"))
+            # Also check any frame pattern
+            check_glob = hou.text.expandString(output_path.replace("$F4", "*").replace("$PRISM_JOB", os.getenv("PRISM_JOB", "")))
+            if os.path.exists(check_first):
+                logger.error(f"Export aborted: target frame exists: {check_first}")
+                # UI restore
+                try:
+                    self.progress_bar.setVisible(False)
+                    self.export_button.setEnabled(True)
+                except Exception:
+                    pass
+                return
+            # If any matching files exist in version folder, abort to prevent overwrite
+            try:
+                import glob
+                existing = glob.glob(check_glob)
+                if existing:
+                    logger.error("Export aborted: sequence already exists in target version folder.")
+                    try:
+                        self.progress_bar.setVisible(False)
+                        self.export_button.setEnabled(True)
+                    except Exception:
+                        pass
+                    return
+            except Exception:
+                pass
+        except Exception:
+            # If hou not available, proceed but log we couldn't pre-check
+            logger.warning("Could not pre-check for existing frames; proceeding cautiously.")
+
         # Get the path from preview and escape $F for hscript
-        output_path = self.preview_path_value.text().strip()
+        escaped_path = output_path.replace("$F", "\\$F")
         escaped_path = output_path.replace("$F", "\\$F")
 
         logger.info(f"Running imgsave for sequence: {escaped_path}")
@@ -596,13 +633,10 @@ class SaveInterface(QtWidgets.QDialog):
             # Get frame range from hou.hscript("frange") output like: 'Frame range: 1 to 16\n'
             fr_out, _ = hou.hscript("frange")
             start_frame, end_frame = None, None
-            
-            # parse numbers
             parts = fr_out.strip().replace("Frame range:", "").split("to")
             if len(parts) == 2:
                 start_frame = int(parts[0].strip())
                 end_frame = int(parts[1].strip())
-        
             if start_frame is not None and end_frame is not None:
                 imgsave_cmd = f'imgsave -f {start_frame} {end_frame} "{escaped_path}"'
             else:
@@ -653,24 +687,20 @@ class SaveInterface(QtWidgets.QDialog):
         self.export_video_content.setVisible(is_enabled)
         self.video_codec_combobox.setEnabled(is_enabled)
 
-        # Refresh path and identifier list
-        try:
-            self.generate_playblast_path()
-        except Exception:
-            pass
-
+        
+        self.generate_playblast_path()
+        
         # Avoid resizing/jumping on toggle; size is fixed at show
 
         # Auto-version: look up next version when enabled
-        try:
-            if self.auto_version_checkbox.isChecked():
-                next_ver = self.lookup_next_version()
-                if next_ver:
-                    self.version_spinbox.blockSignals(True)
-                    self.version_spinbox.setValue(next_ver)
-                    self.version_spinbox.blockSignals(False)
-        except Exception:
-            pass
+        
+        if self.auto_version_checkbox.isChecked():
+            next_ver = self.lookup_next_version()
+            if next_ver:
+                self.version_spinbox.blockSignals(True)
+                self.version_spinbox.setValue(next_ver)
+                self.version_spinbox.blockSignals(False)
+        
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -784,13 +814,22 @@ class SaveInterface(QtWidgets.QDialog):
     def generate_playblast_path(self):
         """Generates and displays the playblast output path based on Prism env vars."""
         try:
-            import hou
-        except ImportError:
-            self.preview_path_value.setText("hou module not found. Cannot generate path.")
-            return
+            full_path, shasset_path = self._build_playblast_path()
+            self.context_value.setText(shasset_path)
+            self.preview_path_value.setText(full_path)
+        except Exception as e:
+            self.preview_path_value.setText(str(e))
 
-        # Fetch environment variables
-        prism_job = "$PRISM_JOB"#hou.getenv("PRISMJOB")
+    def _build_playblast_path(self):
+        """Construct the canonical playblast output path from Prism envs.
+        Returns (full_path, shasset_path). Raises on invalid context.
+        """
+        try:
+            import hou  # ensure hou is present
+        except ImportError:
+            raise RuntimeError("hou module not found. Cannot generate path.")
+
+        prism_job = "$PRISM_JOB"
         prism_shot = hou.getenv("PRISM_SHOT")
         prism_asset = hou.getenv("PRISM_ASSETPATH")
         prism_sequence = hou.getenv("PRISM_SEQUENCE")
@@ -798,47 +837,34 @@ class SaveInterface(QtWidgets.QDialog):
         prism_task = hou.getenv("PRISM_TASK") or "task"
 
         if not prism_job:
-            self.preview_path_value.setText("PRISMJOB environment variable not set.")
-            return
+            raise RuntimeError("PRISMJOB environment variable not set.")
 
-        # Construct the path
         base = f"{prism_job}/03_Production"
         etype = "Playblasts"
-        
+
         ctype = "shot" if prism_shot else "asset"
         cshasset = prism_shot or prism_asset
-        
         if not cshasset:
-            self.preview_path_value.setText("PRISM_SHOT or PRISM_ASSET not set.")
-            return
+            raise RuntimeError("PRISM_SHOT or PRISM_ASSET not set.")
 
         if ctype == "shot":
             if not prism_sequence:
-                self.preview_path_value.setText("PRISM_SEQUENCE not set for shot context.")
-                return
+                raise RuntimeError("PRISM_SEQUENCE not set for shot context.")
             shasset_path = f"Shots/{prism_sequence}/{cshasset}"
-        else: # asset
+        else:
             shasset_path = f"Assets/{cshasset}"
 
-        # Base folder
         playblast_base_path = f"{base}/{shasset_path}/{etype}/"
 
-        # Update context label to show shasset_path
-        self.context_value.setText(shasset_path)
-
-        # Populate identifier dropdown from existing folders
-        # try:
-        #     self.populate_identifiers(base, shasset_path)
-        # except Exception:
-        #     pass
-
-        # Compose identifier, version string, frame and extension
         identifier = (self.identifier_combo.currentText().strip() or "identifier")
         version_num = int(self.version_spinbox.value())
         version_str = f"v{version_num:04d}"
-        frame = "$F4"  # placeholder frame token
+        frame = "$F4"
         extension = (self.format_combobox.currentText() or "jpg").lower()
 
+        filename = f"{prism_department}-{prism_task}_{identifier}_{version_str}.{frame}.{extension}"
+        full_path = f"{playblast_base_path}{identifier}/{version_str}/{filename}"
+        return full_path, shasset_path
         # Filename pattern: department-task_identifier_version.frame.extension
         filename = f"{prism_department}-{prism_task}_{identifier}_{version_str}.{frame}.{extension}"
 
@@ -1032,6 +1058,15 @@ class SaveInterface(QtWidgets.QDialog):
         # log input glob
         logger.info(f"Input Sequence: {input_glob}")
         logger.info(f"Encoding video: {output_video}")
+
+        # Overwrite prevention for video output
+        if os.path.exists(output_video):
+            logger.error(f"Video encode aborted: target file exists: {output_video}")
+            try:
+                self.progress_bar.setVisible(False)
+            except Exception:
+                pass
+            return
 
         # Build arguments for QProcess using scene FPS
         # Build args; codec_args already includes appropriate -pix_fmt
