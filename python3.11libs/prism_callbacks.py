@@ -2,6 +2,11 @@
 Houdini Parameter Context Menu Callbacks for Prism
 
 This module contains callback functions for custom parameter context menu items.
+
+Put this in python source editor to reload module:
+import importlib
+import prism_callbacks
+importlib.reload(prism_callbacks)
 """
 try:
     import hou
@@ -158,6 +163,7 @@ def handle_prism_versioning(kwargs):
     parm = parms[0]
     node = parm.node()
     optype = node.type().name()
+    is_octane_rop = "octane_rop" in optype.lower()
     # Create autoversion toggle parameter only if node has a prerender parm
     has_prerender = node.parm("prerender") is not None
     
@@ -241,12 +247,13 @@ prism_callbacks.on_context_changed(kwargs)
     context_label.hideLabel(True)
     
     
-    # Create identifier parameter
+    # Create identifier parameterparm.setExpression(hscript_expr, language=hou.exprLanguage.Hscript)        
     identifier = hou.StringParmTemplate(
         f"{PARM_PREFIX}identifier",
         "Identifier",
         1,
-        default_value=["$OS"],
+        # default_value=["$OS"],
+        default_value=[ node.name() ],
         string_type=hou.stringParmType.Regular,
         menu_items=[],
         menu_labels=[],
@@ -270,7 +277,7 @@ kwargs['node'].parm('{PARM_PREFIX}version_lookup').pressButton()
         1,
         default_value=[1],
         min=1,
-        min_is_strict=True
+        # min_is_strict=True
     )
     version.setJoinWithNext(True)
 
@@ -294,7 +301,9 @@ prism_callbacks.version_lookup_callback(kwargs)
     
     
     # Create extension parameter (dropdown menu with replace type)
-    # Uses optype-specific extensions from config
+    # Uses optype-specific extensions from config    
+
+
     extension = hou.StringParmTemplate(
         f"{PARM_PREFIX}extension",
         "Extension",
@@ -305,6 +314,12 @@ prism_callbacks.version_lookup_callback(kwargs)
         menu_labels=extensions,
         menu_type=hou.menuType.StringReplace
     )
+
+    # for octane_rop, extension handled entirely by octane
+    if is_octane_rop:
+        extension.setConditional(
+            hou.parmCondType.HideWhen, f"{{ {PARM_PREFIX}hide_helpers == 1 }}"
+        )
 
     open_in_button = hou.ButtonParmTemplate(
         f"{PARM_PREFIX}open_in",
@@ -342,11 +357,16 @@ prism_callbacks.open_folder_callback(kwargs, parm_name='{parm.name()}')
         )
         # When toggled on, press Latest to auto-pick next version
         autoversion.setScriptCallback(f"""
-autoversion = kwargs['node'].parm('{PARM_PREFIX}autoversion')
+autoversion = kwargs['parm']
 if autoversion and autoversion.evalAsInt() == 1:
     kwargs['node'].parm('{PARM_PREFIX}version_lookup').pressButton()
+else:
+    v = kwargs['node'].parm('{PARM_PREFIX}version')
+    v.set(max(v.evalAsInt(),1))
 """)
         autoversion.setScriptCallbackLanguage(hou.scriptLanguage.Python)
+
+    # kwargs['script_value']=="on"
     
     # Create hide_helpers toggle parameter
     hide_helpers = hou.ToggleParmTemplate(
@@ -526,13 +546,19 @@ if autoversion and autoversion.evalAsInt() == 1:
     )
     
     # filename: includes optional sequence prefix and sanitized cshasset ("/" -> "-")
+    # Octane ROPs typically manage/expect the extension separately, so omit it.    
+
     filename_expr = f'''ifs(strcmp(chs("{PARM_PREFIX}type"), "3dRender") == 0, "beauty/", "")
         + ifs(strcmp(chs("{PARM_PREFIX}csequence"), "") == 0, "", chs("{PARM_PREFIX}csequence") + "-")
         + strreplace(chs("{PARM_PREFIX}cshasset"), "/", "-")
         + "_" + chs("{PARM_PREFIX}identifier")
         + "_" + chs("{PARM_PREFIX}version_str")
-        + chs("{PARM_PREFIX}frame_str")
+        + chs("{PARM_PREFIX}frame_str")'''
+
+    if not is_octane_rop:
+        filename_expr += f'''
         + chs("{PARM_PREFIX}extension")'''
+    
     node.parm(f"{PARM_PREFIX}filename").setExpression(
         filename_expr,
         language=hou.exprLanguage.Hscript
@@ -541,7 +567,10 @@ if autoversion and autoversion.evalAsInt() == 1:
     # Final path: type / identifier / version / filename
     hscript_expr = f'chs("{PARM_PREFIX}base") + "/" + chs("{PARM_PREFIX}shasset") + "/" + chs("{PARM_PREFIX}etype") + "/" + chs("{PARM_PREFIX}identifier") + "/" + chs("{PARM_PREFIX}version_str") + "/" + chs("{PARM_PREFIX}filename")'
     
-    parm.setExpression(hscript_expr, language=hou.exprLanguage.Hscript)        
+    if is_octane_rop:
+        parm.set('`'+ hscript_expr + '`')
+    else:
+        parm.setExpression(hscript_expr, language=hou.exprLanguage.Hscript)        
 
     # If the node has a postrender script parm, set it to write versioninfo.json
     postrender_parm = node.parm("postrender")
@@ -558,8 +587,9 @@ prism_callbacks.write_version_info('`opfullpath(".")`', '{parm.name()}')
     # If the node has a prerender script parm, set it to press latest version
     prerender_parm = node.parm("prerender")
     if prerender_parm is not None:
-        node.parm("tprerender").set(1)
-        node.parm("lprerender").set("python")
+        # node.parm("tprerender").set(1)
+        node.parm("tprerender").setExpression(f'ch("{PARM_PREFIX}autoversion")') # set if autoversion enabled
+        node.parm("lprerender").set("python")        
         pre_python = f"""
 hou.parm('`opfullpath(".")`/'+'{PARM_PREFIX}version_lookup').pressButton()
 v = hou.parm('`opfullpath(".")`/'+'{PARM_PREFIX}version')
@@ -621,12 +651,18 @@ def context_to_formula(context, export_type):
 def version_lookup_callback(kwargs):
     """
     Finds the latest version in the output directory and sets the version
-    parameter to the next available version.
+    parameter to the latest existing version. Sets to 0 if no versions exist.
+
     """
     import os
     import re
     
     node = kwargs['node']
+
+    # if autoversion is disabled, do nothing
+    autoversion_parm = node.parm(f'{PARM_PREFIX}autoversion')
+    if autoversion_parm and autoversion_parm.evalAsInt() == 0:
+        return
     
     # Construct the path from helper parameters
     try:
@@ -642,7 +678,7 @@ def version_lookup_callback(kwargs):
     
     if not os.path.isdir(lookup_dir):
         # If the directory doesn't exist, the first version is 1.
-        node.parm(f'{PARM_PREFIX}version').set(1)
+        node.parm(f'{PARM_PREFIX}version').set(0)
         return
         
     versions = []
@@ -661,7 +697,7 @@ def version_lookup_callback(kwargs):
         node.parm(f"{PARM_PREFIX}version").set(latest_version)
     else:
         # If no version folders are found, the first version is 1.
-        node.parm(f'{PARM_PREFIX}version').set(1)
+        node.parm(f'{PARM_PREFIX}version').set(0)
 
 def open_folder_callback(kwargs, parm_name):
     """

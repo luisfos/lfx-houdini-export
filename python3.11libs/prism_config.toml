@@ -37,6 +37,7 @@ time_dependent = false
 usdrender      = "groups.render"
 karmarendersettings = "groups.render"
 octane             = "groups.render"
+octane_rop             = "groups.render"
 redshift_rop       = "groups.render"
 ifd                = "groups.render"
 karma                = "groups.render"

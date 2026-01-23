@@ -2,6 +2,20 @@
 Houdini Parameter Context Menu Callbacks
 
 This module contains callback functions for custom parameter context menu items.
+
+Put this in python source editor to reload module:
+import importlib
+import parm_menu_callbacks
+importlib.reload(parm_menu_callbacks)
+
+
+TODO:
+- Support octane rop
+- Copy improved logic from prism_callbacks
+-- Handle case where no version folders exist (set version to 1)
+-- connect prerender script to autoversion
+-- autoversion toggle callback to min version to 1 when disabled
+
 """
 
 import hou
@@ -234,8 +248,23 @@ def handle_versionned_path(kwargs):
     )
     
     # filename: "identifier_v001.0001.ext" or "identifier_v001.ext"
+    # Octane ROPs typically manage/expect the extension separately, so omit it.
+    if optype == "octane_rop":
+        filename_expr = (
+            f'chs("{PARM_PREFIX}identifier") + "_" + '
+            f'chs("{PARM_PREFIX}version_str") + '
+            f'chs("{PARM_PREFIX}frame_str")'
+        )
+    else:
+        filename_expr = (
+            f'chs("{PARM_PREFIX}identifier") + "_" + '
+            f'chs("{PARM_PREFIX}version_str") + '
+            f'chs("{PARM_PREFIX}frame_str") + '
+            f'chs("{PARM_PREFIX}extension")'
+        )
+
     node.parm(f"{PARM_PREFIX}filename").setExpression(
-        f'chs("{PARM_PREFIX}identifier") + "_" + chs("{PARM_PREFIX}version_str") + chs("{PARM_PREFIX}frame_str") + chs("{PARM_PREFIX}extension")',
+        filename_expr,
         language=hou.exprLanguage.Hscript
     )
     
@@ -243,7 +272,11 @@ def handle_versionned_path(kwargs):
     # Final path: base / identifier / version / filename
     hscript_expr = f'chs("{PARM_PREFIX}base_folder") + "/" + chs("{PARM_PREFIX}identifier") + "/" + chs("{PARM_PREFIX}version_str") + "/" + chs("{PARM_PREFIX}filename")'
     
-    parm.setExpression(hscript_expr, language=hou.exprLanguage.Hscript)
+    if optype == "octane_rop":
+        # Octane ROPs cannot handle expressions, so we use hscript eval
+        parm.set('`' + hscript_expr + '`')
+    else:
+        parm.setExpression(hscript_expr, language=hou.exprLanguage.Hscript)
     
     # Python expression (commented out for now)
     # python_expr = f"""base = hou.pwd().parm('{PARM_PREFIX}base_folder').eval()
