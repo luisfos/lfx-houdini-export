@@ -34,14 +34,15 @@ time_dependent = false
 # --- ROP to Group Mapping ---
 # Map each ROP to one of the groups defined above.
 [rop_settings]
-usdrender      = "groups.render"
-karmarendersettings = "groups.render"
+usdrender          = "groups.render"
+karmarendersettings= "groups.render"
 octane             = "groups.render"
-octane_rop             = "groups.render"
+octane_rop         = "groups.render"
+octanerendersetup  = "groups.render"
 redshift_rop       = "groups.render"
 ifd                = "groups.render"
-karma                = "groups.render"
-opengl                = "groups.render"
+karma              = "groups.render"
+opengl             = "groups.render"
 
 rop_geometry       = "groups.geo_cache"
 geometry           = "groups.geo_cache"

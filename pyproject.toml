@@ -1,0 +1,18 @@
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-ra -q"
+testpaths = ["python3.11libs/tests"]
+
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+markers = [
+  "houdini: tests that require hython/Houdini",
+]
+
+# Keep output signal high; tweak as you like.
+filterwarnings = [
+  "error::DeprecationWarning",
+  "ignore::DeprecationWarning:pkg_resources.*",
+]

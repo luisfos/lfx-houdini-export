@@ -7,6 +7,12 @@ Put this in python source editor to reload module:
 import importlib
 import prism_callbacks
 importlib.reload(prism_callbacks)
+
+
+TODO:
+- Handle deep files on each node
+- automate testing
+- match prism custom context parms
 """
 try:
     import hou
@@ -162,8 +168,9 @@ def handle_prism_versioning(kwargs):
     
     parm = parms[0]
     node = parm.node()
-    optype = node.type().name()
-    is_octane_rop = "octane_rop" in optype.lower()
+    # optype = node.type().name()
+    optype = node.type().nameComponents()[-2]
+    is_octane_rop = "octane_rop" in optype.lower() or "octanerendersetup" in optype.lower()
     # Create autoversion toggle parameter only if node has a prerender parm
     has_prerender = node.parm("prerender") is not None
     
@@ -650,6 +657,8 @@ def context_to_formula(context, export_type):
 
 def version_lookup_callback(kwargs):
     """
+    Used as a callback for autoversion behaviour and "latest" button.
+    Depends on handle_prism_versioning() having first created the helper parameters.
     Finds the latest version in the output directory and sets the version
     parameter to the latest existing version. Sets to 0 if no versions exist.
 

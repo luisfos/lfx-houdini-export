@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<shelfDocument>
+  <!-- This file contains definitions of shelves, toolbars, and tools.
+ It should not be hand-edited when it is being used by the application.
+ Note, that two definitions of the same element are not allowed in
+ a single file. -->
+
+  <toolshelf name="LF_PRISM" label="LF Prism">
+    <memberTool name="LF Pytest"/>
+  </toolshelf>
+
+  <tool name="LF Pytest" label="LF Pytest" icon="MISC_python">
+    <helpText><![CDATA["""Runs the repo pytest suite using hython and shows the output.
+"""]]></helpText>
+    <script scriptType="python"><![CDATA[import importlib
+import lf_pytest_runner
+importlib.reload(lf_pytest_runner)
+lf_pytest_runner.run()]]></script>
+  </tool>
+</shelfDocument>
