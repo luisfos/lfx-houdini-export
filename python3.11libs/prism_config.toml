@@ -25,7 +25,7 @@ default_type = "Product"
 extensions = [".abc"]
 time_dependent = false
 
-[groups.usd]
+[groups.usd_cache]
 default_type = "Product"
 extensions = [".usd", ".usda", ".usdc"]
 time_dependent = false
@@ -34,82 +34,29 @@ time_dependent = false
 # --- ROP to Group Mapping ---
 # Map each ROP to one of the groups defined above.
 [rop_settings]
-usdrender          = "groups.render"
-karmarendersettings= "groups.render"
-octane             = "groups.render"
-octane_rop         = "groups.render"
-octanerendersetup  = "groups.render"
-redshift_rop       = "groups.render"
-ifd                = "groups.render"
-karma              = "groups.render"
-opengl             = "groups.render"
+"Lop/usdrender_rop"            = { group = "groups.render", parm = "outputimage" }
+"Lop/usd_rop"                   = { group = "groups.usd_cache", parm = "output" }
+"Lop/karmarendersettings"   = "groups.render"
 
-rop_geometry       = "groups.geo_cache"
-geometry           = "groups.geo_cache"
-file               = "groups.geo_cache"
+"Driver/octane_rop"             = { group = "groups.render", parm = "HO_img_fileName" }
+"Driver/octanerendersetup"      = "groups.render"
+"Driver/redshift_rop"           = "groups.render"
+"Driver/ifd"                    = { group = "groups.render", parm = "vm_picture" }
+"Driver/karma"                  = "groups.render"
+"Driver/opengl"                 = { group = "groups.render", parm = "picture" }
 
-rop_alembic        = "groups.alembic_cache"
-alembic            = "groups.alembic_cache"
+"Driver/rop_geometry"           = { group = "groups.geo_cache", parm = "sopoutput" }
+"Driver/geometry"               = { group = "groups.geo_cache", parm = "sopoutput" }
+"Sop/filecache"                 = { group = "groups.geo_cache", parm = "file" }
+"Sop/file"                      = { group = "groups.geo_cache", parm = "file" }
 
-usd_rop            = "groups.usd"
+"Driver/rop_alembic"            = { group = "groups.alembic_cache", parm = "filename" }
+"Driver/alembic"                = { group = "groups.alembic_cache", parm = "filename" }
+
 
 # --- Overrides for specific ROPs ---
 # If a ROP needs a specific setting changed, you can override it here.
-[rop_settings.rop_image]
+[rop_settings."Driver/rop_image"]
 group = "groups.render" # Inherits from the render group...
 default_type = "2drender" # ...but overrides the default_type.
-
-
-# --- Node Conversion (convert_node_prism) ---
-#
-# `convert_node_prism` needs to know which parameter on a node holds the output
-# filepath. This section is designed to be user-editable (and UI-friendly).
-#
-# Matching behaviour:
-# - Keys under `convert_node_prism.nodes` are matched as substrings against
-#   the Houdini node type name (lowercased).
-# - If multiple keys match, the longest key wins (most specific).
-
-[convert_node_prism]
-# If false, nodes must be explicitly enabled below.
-default_enabled = false
-
-# Fallback parm names to try (in order) when a node is enabled but no `parm`
-# was configured, or when `default_enabled = true` and no node mapping matches.
-default_file_parms = [
-	"sopoutput",
-	"file",
-	"filename",
-	"vm_picture",
-	"picture",
-	"output",
-	"outputimage",
-	"copoutput",
-	"HO_img_fileName",
-]
-
-[convert_node_prism.nodes]
-# SOPs
-file      = { enabled = true,  parm = "file" }
-filecache = { enabled = true,  parm = "file" }
-
-# ROPs
-geometry  = { enabled = true,  parm = "sopoutput" }
-rop_geometry = { enabled = true, parm = "sopoutput" }
-
-alembic   = { enabled = true,  parm = "filename" }
-rop_alembic = { enabled = true, parm = "filename" }
-
-ifd       = { enabled = true,  parm = "vm_picture" }
-opengl    = { enabled = true,  parm = "picture" }
-
-# Octane (common parm on Octane_ROP)
-octane_rop = { enabled = true, parm = "HO_img_fileName" }
-
-# LOPs / Solaris
-usd_rop        = { enabled = true, parm = "output" }
-usdrender_rop  = { enabled = true, parm = "outputimage" }
-
-# COPs
-cimage    = { enabled = true,  parm = "copoutput" }
 

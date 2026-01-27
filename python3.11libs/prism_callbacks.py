@@ -84,6 +84,40 @@ def get_optype_config(optype, config):
     return optype_config
 
 
+def get_convert_node_prism_parms(optype: str, config: dict) -> tuple[list[str], str | None]:
+    """Return output parm name(s) for convert_node_prism from the TOML config.
+
+    This intentionally only reads from `rop_settings` entries which define a
+    `parm` (or `parms`) field.
+
+    Matching behaviour mirrors `get_optype_config`: substring match against the
+    Houdini node type name (case-insensitive), with longest match winning.
+
+    Returns:
+        (parm_names, best_match_key)
+    """
+    rop_settings = config.get("rop_settings", {})
+    optype_lower = (optype or "").lower()
+
+    matching_keys = [key for key in rop_settings if key.lower() in optype_lower]
+    if not matching_keys:
+        return ([], None)
+
+    best_match_key = max(matching_keys, key=len)
+    node_config_info = rop_settings.get(best_match_key)
+
+    if not isinstance(node_config_info, dict):
+        return ([], best_match_key)
+
+    if node_config_info.get("parm"):
+        return ([str(node_config_info["parm"])], best_match_key)
+
+    if node_config_info.get("parms"):
+        return ([str(p) for p in node_config_info["parms"]], best_match_key)
+
+    return ([], best_match_key)
+
+
 def get_prism_structure(project):
     """
     Get the Prism structure for a given project.
@@ -174,7 +208,7 @@ def convert_parm_prism(kwargs):
     
     # Load configuration and get optype-specific settings
     config = load_config()
-    optype_config = get_optype_config(knode.type().name(), config)    
+    optype_config = get_optype_config(knode.type().nameWithCategory(), config)
     # Get extension settings from config
     extensions = optype_config.get("extensions", [".bgeo.sc"])
     default_extension = extensions[0]
@@ -631,76 +665,32 @@ def convert_node_prism(kwargs):
     
     calls convert_parm_prism on the file parameter of the node, if found in config
     """
+    knode = kwargs.get("node")
+    assert knode is not None, "convert_node_prism: No node provided in kwargs"  
 
-    def _notify(message: str) -> None:
-        try:
-            if "hou" in globals() and hasattr(hou, "ui"):
-                hou.ui.displayMessage(message)
-                return
-        except Exception:
-            pass
-        print(message)
+    def _notify(message: str):
+        hou.ui.displayMessage(message, severity=hou.severityType.Warning)            
 
-    node = kwargs.get("node")
-    if node is None:
-        parms = kwargs.get("parms") or []
-        if parms:
-            try:
-                node = parms[0].node()
-            except Exception:
-                node = None
-
-    if node is None:
-        _notify("convert_node_prism: No node provided in kwargs")
-        return
-
+    optype_name = knode.type().nameWithCategory()
     config = load_config()
-    settings = config.get("convert_node_prism", {})
-    nodes_cfg = settings.get("nodes", {})
-
-    optype = node.type().name()
-    optype_lower = optype.lower()
-
-    matching_keys = [key for key in nodes_cfg if key.lower() in optype_lower]
-    best_key = max(matching_keys, key=len) if matching_keys else None
-
-    node_cfg = nodes_cfg.get(best_key) if best_key is not None else None
-    enabled_default = bool(settings.get("default_enabled", False))
-
-    enabled = enabled_default
-    candidate_parm_names: list[str] = []
-
-    if isinstance(node_cfg, dict):
-        enabled = bool(node_cfg.get("enabled", enabled_default))
-        if "parm" in node_cfg and node_cfg["parm"]:
-            candidate_parm_names = [str(node_cfg["parm"])]
-        elif "parms" in node_cfg and node_cfg["parms"]:
-            candidate_parm_names = [str(p) for p in node_cfg["parms"]]
-    elif isinstance(node_cfg, str) and node_cfg:
-        enabled = enabled_default
-        candidate_parm_names = [node_cfg]
-    else:
-        # No explicit mapping found; only proceed if default_enabled is true.
-        enabled = enabled_default
-
-    if not enabled:
-        if best_key is None:
-            _notify(f"convert_node_prism: No mapping for '{optype}' (and default_enabled=false)")
+    candidate_parm_names, best_match_key = get_convert_node_prism_parms(optype_name, config)
+    if not candidate_parm_names:
+        if best_match_key is None:
+            _notify(
+                f"convert_node_prism: No rop_settings match for '{optype_name}'. "
+                "Add an entry in prism_config.toml under [rop_settings] with a 'parm'."
+            )
         else:
-            _notify(f"convert_node_prism: Mapping '{best_key}' is disabled")
-        return
-
-    if not candidate_parm_names:
-        candidate_parm_names = list(settings.get("default_file_parms", []))
-
-    if not candidate_parm_names:
-        _notify("convert_node_prism: No candidate parm names configured")
+            _notify(
+                f"convert_node_prism: rop_settings.{best_match_key} has no 'parm'. "
+                "Set e.g. { group = 'groups.render', parm = 'vm_picture' }."
+            )
         return
 
     target_parm = None
     for parm_name in candidate_parm_names:
         try:
-            target_parm = node.parm(parm_name)
+            target_parm = knode.parm(parm_name)
         except Exception:
             target_parm = None
         if target_parm is not None:
@@ -709,12 +699,12 @@ def convert_node_prism(kwargs):
     if target_parm is None:
         _notify(
             "convert_node_prism: Couldn't find an output parm on node "
-            f"'{node.path()}' (type '{optype}'). Tried: {candidate_parm_names}"
+            f"'{knode.path()}' (type '{optype_name}'). Tried: {candidate_parm_names}"
         )
         return
 
     forward_kwargs = dict(kwargs)
-    forward_kwargs["node"] = node
+    forward_kwargs["node"] = knode
     forward_kwargs["parms"] = [target_parm]
     convert_parm_prism(forward_kwargs)
     
@@ -805,9 +795,10 @@ def version_lookup_callback(kwargs):
 
 def open_folder_callback(kwargs, parm_name):
     """
-    Callback function to open the folder containing the output file.
-    If the folder does not exist, it tries parent directories up to 3 levels.
+    Callback function to open/explore the folder containing the output file.
+    If the folder does not exist, it tries parent directories up to X levels.
     """
+    LEVELS = 4
     import os
     node = kwargs['node']
     parm = node.parm(parm_name)
@@ -821,8 +812,8 @@ def open_folder_callback(kwargs, parm_name):
     folder_path = os.path.dirname(path)
     original_folder_path = folder_path
 
-    # Try to find a valid parent directory up to 3 levels up
-    for i in range(4):
+    # Try to find a valid parent directory up to X levels up
+    for i in range(LEVELS+1):
         if os.path.exists(folder_path):
             os.startfile(folder_path)
             return  # Exit after opening
