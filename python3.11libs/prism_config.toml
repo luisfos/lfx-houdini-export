@@ -59,3 +59,57 @@ usd_rop            = "groups.usd"
 group = "groups.render" # Inherits from the render group...
 default_type = "2drender" # ...but overrides the default_type.
 
+
+# --- Node Conversion (convert_node_prism) ---
+#
+# `convert_node_prism` needs to know which parameter on a node holds the output
+# filepath. This section is designed to be user-editable (and UI-friendly).
+#
+# Matching behaviour:
+# - Keys under `convert_node_prism.nodes` are matched as substrings against
+#   the Houdini node type name (lowercased).
+# - If multiple keys match, the longest key wins (most specific).
+
+[convert_node_prism]
+# If false, nodes must be explicitly enabled below.
+default_enabled = false
+
+# Fallback parm names to try (in order) when a node is enabled but no `parm`
+# was configured, or when `default_enabled = true` and no node mapping matches.
+default_file_parms = [
+	"sopoutput",
+	"file",
+	"filename",
+	"vm_picture",
+	"picture",
+	"output",
+	"outputimage",
+	"copoutput",
+	"HO_img_fileName",
+]
+
+[convert_node_prism.nodes]
+# SOPs
+file      = { enabled = true,  parm = "file" }
+filecache = { enabled = true,  parm = "file" }
+
+# ROPs
+geometry  = { enabled = true,  parm = "sopoutput" }
+rop_geometry = { enabled = true, parm = "sopoutput" }
+
+alembic   = { enabled = true,  parm = "filename" }
+rop_alembic = { enabled = true, parm = "filename" }
+
+ifd       = { enabled = true,  parm = "vm_picture" }
+opengl    = { enabled = true,  parm = "picture" }
+
+# Octane (common parm on Octane_ROP)
+octane_rop = { enabled = true, parm = "HO_img_fileName" }
+
+# LOPs / Solaris
+usd_rop        = { enabled = true, parm = "output" }
+usdrender_rop  = { enabled = true, parm = "outputimage" }
+
+# COPs
+cimage    = { enabled = true,  parm = "copoutput" }
+

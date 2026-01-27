@@ -55,13 +55,14 @@ def get_optype_config(optype, config):
     return optype_config
 
 
-def handle_versionned_path(kwargs):
+def convert_parm(kwargs):
     """
     Handle the 'Versionned path' context menu action for a parameter.
     
     Creates a spare folder with versioned path parameters and sets up
     a Python expression on the clicked parameter to reference them.
     
+    Input must contain 'parms' which is the parameter the expression will enter.
     Args:
         kwargs: Dictionary containing context menu kwargs from Houdini
     """
@@ -278,11 +279,4 @@ def handle_versionned_path(kwargs):
     else:
         parm.setExpression(hscript_expr, language=hou.exprLanguage.Hscript)
     
-    # Python expression (commented out for now)
-    # python_expr = f"""base = hou.pwd().parm('{PARM_PREFIX}base_folder').eval()
-# identifier = hou.pwd().parm('{PARM_PREFIX}identifier').eval()
-# version = hou.pwd().parm('{PARM_PREFIX}version').eval()
-# frame = hou.pwd().parm('{PARM_PREFIX}frame').eval()
-# ext = hou.pwd().parm('{PARM_PREFIX}extension').eval()
-# return "/".join([base, identifier, f"v{version:03d}", f"{identifier}_v{version:03d}.{frame}{ext}"])
-    # parm.setExpression(python_expr, language=hou.exprLanguage.Python)
+    

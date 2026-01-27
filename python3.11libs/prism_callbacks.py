@@ -149,8 +149,7 @@ def write_version_info(node_path: str, parm_name: str):
         json.dump(data, f, indent=4)
     
 
-
-def handle_prism_versioning(kwargs):
+def convert_parm_prism(kwargs):
     """
     Handle the 'Prism Versionning' context menu action for a parameter.
     
@@ -166,18 +165,16 @@ def handle_prism_versioning(kwargs):
         hou.ui.displayMessage("No parameter selected", severity=hou.severityType.Warning)
         return
     
-    parm = parms[0]
-    node = parm.node()
-    # optype = node.type().name()
-    optype = node.type().nameComponents()[-2]
-    is_octane_rop = "octane_rop" in optype.lower() or "octanerendersetup" in optype.lower()
+    kparm = parms[0] # parm from kwargs
+    knode = kparm.node() # node from kwargs
+    optype_name = knode.type().nameComponents()[-2].lower()
+    is_octane_rop = "octane_rop" in optype_name or "octanerendersetup" in optype_name
     # Create autoversion toggle parameter only if node has a prerender parm
-    has_prerender = node.parm("prerender") is not None
+    has_prerender = knode.parm("prerender") is not None
     
     # Load configuration and get optype-specific settings
     config = load_config()
-    optype_config = get_optype_config(optype, config)    
-    
+    optype_config = get_optype_config(knode.type().name(), config)    
     # Get extension settings from config
     extensions = optype_config.get("extensions", [".bgeo.sc"])
     default_extension = extensions[0]
@@ -185,38 +182,38 @@ def handle_prism_versioning(kwargs):
     default_type = optype_config.get("default_type", "Product")
     
     # Create a spare folder with versioned path parameters
-    folder_name = f"{PARM_PREFIX}versioned_path_folder"
-    folder_label = "Prism Export Settings"
+    folder_name = f"{PARM_PREFIX}prism_pipe_folder"
+    folder_label = "Prism Pipe Parms"
     
     # Check if the folder already exists - if so, remove it and clear the expression
-    existing_folder = node.parm(folder_name)
-    if existing_folder is not None:
+    existing_folder_parm = knode.parm(folder_name)
+    if existing_folder_parm is not None:
         # Clear the expression on the original parameter
         try:
-            parm.deleteAllKeyframes()
+            kparm.deleteAllKeyframes()
         except:
             pass
         
         # Remove the existing folder
-        ptg = node.parmTemplateGroup()
+        ptg = knode.parmTemplateGroup()
         try:
             ptg.remove(folder_name)
-            node.setParmTemplateGroup(ptg)
+            knode.setParmTemplateGroup(ptg)
         except:
             pass
     
     # Create the folder and parameters
-    ptg = node.parmTemplateGroup()
+    ptg = knode.parmTemplateGroup()
     
     # Create folder (collapsible)
-    folder = hou.FolderParmTemplate(
+    folder_tpl = hou.FolderParmTemplate(
         folder_name,
         folder_label,
         folder_type=hou.folderType.Collapsible
     )
     
     # Create type parameter
-    type_parm = hou.StringParmTemplate(
+    type_tpl = hou.StringParmTemplate(
         f"{PARM_PREFIX}type",
         "Type",
         1,
@@ -228,7 +225,7 @@ def handle_prism_versioning(kwargs):
     )
 
     # Create context parameter
-    context_parm = hou.StringParmTemplate(
+    context_tpl = hou.StringParmTemplate(
         f"{PARM_PREFIX}context",
         "Context",
         1,
@@ -243,24 +240,24 @@ prism_callbacks.on_context_changed(kwargs)
 """,
         script_callback_language=hou.scriptLanguage.Python
     )
-    context_parm.setHelp("If set to custom you can change the custom context hidden helper parameters.")
-    context_parm.setJoinWithNext(True)
+    context_tpl.setHelp("If set to custom you can change the custom context hidden helper parameters.")
+    context_tpl.setJoinWithNext(True)
 
-    context_label = hou.LabelParmTemplate(
+    context_label_tpl = hou.LabelParmTemplate(
         f"{PARM_PREFIX}context_label",
         "Context Label",
         (f'`chs("{PARM_PREFIX}shasset")`',),
         )
-    context_label.hideLabel(True)
+    context_label_tpl.hideLabel(True)
     
     
     # Create identifier parameterparm.setExpression(hscript_expr, language=hou.exprLanguage.Hscript)        
-    identifier = hou.StringParmTemplate(
+    identifier_tpl = hou.StringParmTemplate(
         f"{PARM_PREFIX}identifier",
         "Identifier",
         1,
         # default_value=["$OS"],
-        default_value=[ node.name() ],
+        default_value=[ knode.name() ],
         string_type=hou.stringParmType.Regular,
         menu_items=[],
         menu_labels=[],
@@ -272,13 +269,13 @@ return prism_callbacks.get_existing_identifiers(kwargs)
         item_generator_script_language=hou.scriptLanguage.Python
     )
     # When identifier changes, press Latest to refresh version suggestion
-    identifier.setScriptCallback(f"""
+    identifier_tpl.setScriptCallback(f"""
 kwargs['node'].parm('{PARM_PREFIX}version_lookup').pressButton()
 """)
-    identifier.setScriptCallbackLanguage(hou.scriptLanguage.Python)
+    identifier_tpl.setScriptCallbackLanguage(hou.scriptLanguage.Python)
     
     # Create version parameter
-    version = hou.IntParmTemplate(
+    version_tpl = hou.IntParmTemplate(
         f"{PARM_PREFIX}version",
         "Version",
         1,
@@ -286,9 +283,9 @@ kwargs['node'].parm('{PARM_PREFIX}version_lookup').pressButton()
         min=1,
         # min_is_strict=True
     )
-    version.setJoinWithNext(True)
+    version_tpl.setJoinWithNext(True)
 
-    version_lookup_button = hou.ButtonParmTemplate(
+    version_lookup_button_tpl = hou.ButtonParmTemplate(
         f"{PARM_PREFIX}version_lookup",
         "Latest",
         script_callback="""
@@ -298,11 +295,11 @@ prism_callbacks.version_lookup_callback(kwargs)
         script_callback_language=hou.scriptLanguage.Python
     )
 
-    folder.setTags({"sidefx::header_parm": f"{PARM_PREFIX}version"})
+    folder_tpl.setTags({"sidefx::header_parm": f"{PARM_PREFIX}version"})
 
     # Disable version parm when autoversion is enabled (only if autoversion exists)
     if has_prerender:
-        version.setConditional(
+        version_tpl.setConditional(
             hou.parmCondType.DisableWhen, f"{{ {PARM_PREFIX}autoversion == 1 }}"
         )
     
@@ -311,7 +308,7 @@ prism_callbacks.version_lookup_callback(kwargs)
     # Uses optype-specific extensions from config    
 
 
-    extension = hou.StringParmTemplate(
+    extension_tpl = hou.StringParmTemplate(
         f"{PARM_PREFIX}extension",
         "Extension",
         1,
@@ -324,32 +321,33 @@ prism_callbacks.version_lookup_callback(kwargs)
 
     # for octane_rop, extension handled entirely by octane
     if is_octane_rop:
-        extension.setConditional(
+        extension_tpl.setConditional(
             hou.parmCondType.HideWhen, f"{{ {PARM_PREFIX}hide_helpers == 1 }}"
         )
 
-    open_in_button = hou.ButtonParmTemplate(
+    open_in_button_tpl = hou.ButtonParmTemplate(
         f"{PARM_PREFIX}open_in",
         "Open Folder",
         script_callback=f"""
 import prism_callbacks
-prism_callbacks.open_folder_callback(kwargs, parm_name='{parm.name()}')
+prism_callbacks.open_folder_callback(kwargs, parm_name='{kparm.name()}')
 """,
         script_callback_language=hou.scriptLanguage.Python
     )
     
     # Create frame parameter (disabled when time_dependent is false)
-    frame = hou.StringParmTemplate(
+    frame_tpl = hou.StringParmTemplate(
         f"{PARM_PREFIX}frame",
         "Frame",
         1,
         default_value=["$F4"],
         string_type=hou.stringParmType.Regular
     )
-    frame.setConditional(hou.parmCondType.DisableWhen, f'{{ {PARM_PREFIX}time_dependent == 0 }}')
+    frame_tpl.setConditional(hou.parmCondType.DisableWhen, f'{{ {PARM_PREFIX}time_dependent == 0 }}')
+    frame_tpl.setJoinWithNext(True)
     
     # Create time_dependent toggle parameter
-    time_dependent = hou.ToggleParmTemplate(
+    time_dependent_tpl = hou.ToggleParmTemplate(
         f"{PARM_PREFIX}time_dependent",
         "Time Dependent",
         default_value=time_dependent_default
@@ -357,13 +355,13 @@ prism_callbacks.open_folder_callback(kwargs, parm_name='{parm.name()}')
 
     
     if has_prerender:
-        autoversion = hou.ToggleParmTemplate(
+        autoversion_tpl = hou.ToggleParmTemplate(
             f"{PARM_PREFIX}autoversion",
             "Auto Version",
             default_value=True
         )
         # When toggled on, press Latest to auto-pick next version
-        autoversion.setScriptCallback(f"""
+        autoversion_tpl.setScriptCallback(f"""
 autoversion = kwargs['parm']
 if autoversion and autoversion.evalAsInt() == 1:
     kwargs['node'].parm('{PARM_PREFIX}version_lookup').pressButton()
@@ -371,12 +369,12 @@ else:
     v = kwargs['node'].parm('{PARM_PREFIX}version')
     v.set(max(v.evalAsInt(),1))
 """)
-        autoversion.setScriptCallbackLanguage(hou.scriptLanguage.Python)
+        autoversion_tpl.setScriptCallbackLanguage(hou.scriptLanguage.Python)
 
     # kwargs['script_value']=="on"
     
     # Create hide_helpers toggle parameter
-    hide_helpers = hou.ToggleParmTemplate(
+    hide_helpers_tpl = hou.ToggleParmTemplate(
         f"{PARM_PREFIX}hide_helpers",
         "Hide Helper Parameters",
         default_value=True
@@ -387,7 +385,7 @@ else:
     ctype_expr = 'ifs(strcmp("$PRISM_SHOT", "") == 0, "asset", "shot")'
 
     # Custom context parameters
-    ctype = hou.StringParmTemplate(
+    ctype_tpl = hou.StringParmTemplate(
         f"{PARM_PREFIX}ctype",
         "Custom Context Type",
         1,
@@ -397,89 +395,89 @@ else:
         menu_labels=["Shot", "Asset"],
         menu_type=hou.menuType.Normal
     )
-    ctype.setConditional(hou.parmCondType.HideWhen, f'{{ {PARM_PREFIX}hide_helpers == 1 }}')
-    ctype.setDefaultExpression((ctype_expr))
+    ctype_tpl.setConditional(hou.parmCondType.HideWhen, f'{{ {PARM_PREFIX}hide_helpers == 1 }}')
+    ctype_tpl.setDefaultExpression((ctype_expr))
     # ctype.setDefaultExpressionLanguage(hou.scriptLanguage.Hscript)
 
-    cshasset = hou.StringParmTemplate(
+    cshasset_tpl = hou.StringParmTemplate(
         f"{PARM_PREFIX}cshasset",
         "Custom Shot/Asset",
         1,
         default_value=["$PRISM_SHOT$PRISM_ASSETPATH"],
         string_type=hou.stringParmType.Regular
     )
-    cshasset.setConditional(hou.parmCondType.HideWhen, f'{{ {PARM_PREFIX}hide_helpers == 1 }}')
+    cshasset_tpl.setConditional(hou.parmCondType.HideWhen, f'{{ {PARM_PREFIX}hide_helpers == 1 }}')
 
-    csequence = hou.StringParmTemplate(
+    csequence_tpl = hou.StringParmTemplate(
         f"{PARM_PREFIX}csequence",
         "Custom Sequence",
         1,
         default_value=["$PRISM_SEQUENCE"],
         string_type=hou.stringParmType.Regular
     )
-    csequence.setConditional(hou.parmCondType.HideWhen, f'{{ {PARM_PREFIX}hide_helpers == 1 }}')
+    csequence_tpl.setConditional(hou.parmCondType.HideWhen, f'{{ {PARM_PREFIX}hide_helpers == 1 }}')
 
     # Create hidden helper spare parameters
-    base = hou.StringParmTemplate(
+    base_tpl = hou.StringParmTemplate(
         f"{PARM_PREFIX}base",
         "Base",
         1,
         default_value=["$PRISMJOB/03_Production"],
         string_type=hou.stringParmType.Regular
     )
-    base.setConditional(hou.parmCondType.HideWhen, f'{{ {PARM_PREFIX}hide_helpers == 1 }}')
+    base_tpl.setConditional(hou.parmCondType.HideWhen, f'{{ {PARM_PREFIX}hide_helpers == 1 }}')
 
-    shasset = hou.StringParmTemplate(
+    shasset_tpl = hou.StringParmTemplate(
         f"{PARM_PREFIX}shasset",
         "Shot/Asset",
         1,
         default_value=["Shots/$PRISM_SEQUENCE/$PRISM_SHOT"],
         string_type=hou.stringParmType.Regular
     )
-    shasset.setConditional(hou.parmCondType.HideWhen, f'{{ {PARM_PREFIX}hide_helpers == 1 }}')
+    shasset_tpl.setConditional(hou.parmCondType.HideWhen, f'{{ {PARM_PREFIX}hide_helpers == 1 }}')
 
-    etype = hou.StringParmTemplate(
+    etype_tpl = hou.StringParmTemplate(
         f"{PARM_PREFIX}etype",
         "Export Type",
         1,
         default_value=["Export"],
         string_type=hou.stringParmType.Regular
     )
-    etype.setConditional(hou.parmCondType.HideWhen, f'{{ {PARM_PREFIX}hide_helpers == 1 }}')
+    etype_tpl.setConditional(hou.parmCondType.HideWhen, f'{{ {PARM_PREFIX}hide_helpers == 1 }}')
     
     # Create hidden intermediate parameters to split up the expression
     # Version string (v001)
-    version_str = hou.StringParmTemplate(
+    version_str_tpl = hou.StringParmTemplate(
         f"{PARM_PREFIX}version_str",
         "Version String",
         1,
         default_value=[""],
         string_type=hou.stringParmType.Regular
     )
-    version_str.setConditional(hou.parmCondType.HideWhen, f'{{ {PARM_PREFIX}hide_helpers == 1 }}')
+    version_str_tpl.setConditional(hou.parmCondType.HideWhen, f'{{ {PARM_PREFIX}hide_helpers == 1 }}')
     
     # Frame string (empty or .0001)
-    frame_str = hou.StringParmTemplate(
+    frame_str_tpl = hou.StringParmTemplate(
         f"{PARM_PREFIX}frame_str",
         "Frame String",
         1,
         default_value=[""],
         string_type=hou.stringParmType.Regular
     )
-    frame_str.setConditional(hou.parmCondType.HideWhen, f'{{ {PARM_PREFIX}hide_helpers == 1 }}')
+    frame_str_tpl.setConditional(hou.parmCondType.HideWhen, f'{{ {PARM_PREFIX}hide_helpers == 1 }}')
     
     # Filename (identifier_v001 or identifier_v001.0001)
-    filename = hou.StringParmTemplate(
+    filename_tpl = hou.StringParmTemplate(
         f"{PARM_PREFIX}filename",
         "Filename",
         1,
         default_value=[""],
         string_type=hou.stringParmType.Regular
     )
-    filename.setConditional(hou.parmCondType.HideWhen, f'{{ {PARM_PREFIX}hide_helpers == 1 }}')
+    filename_tpl.setConditional(hou.parmCondType.HideWhen, f'{{ {PARM_PREFIX}hide_helpers == 1 }}')
     
     # User comment to include in versioninfo.json
-    comment_parm = hou.StringParmTemplate(
+    comment_tpl = hou.StringParmTemplate(
         f"{PARM_PREFIX}comment",
         "Comment",
         1,
@@ -492,54 +490,54 @@ else:
     )
     
     # Add parameters to folder
-    folder.addParmTemplate(type_parm)
-    folder.addParmTemplate(context_parm)
-    folder.addParmTemplate(context_label)
-    folder.addParmTemplate(identifier)
+    folder_tpl.addParmTemplate(type_tpl)
+    folder_tpl.addParmTemplate(context_tpl)
+    folder_tpl.addParmTemplate(context_label_tpl)
+    folder_tpl.addParmTemplate(identifier_tpl)
     # Place autoversion before version when present
     if has_prerender:
-        folder.addParmTemplate(autoversion)
-    folder.addParmTemplate(version)
-    folder.addParmTemplate(version_lookup_button)
-    folder.addParmTemplate(time_dependent)
-    folder.addParmTemplate(frame)
-    folder.addParmTemplate(extension)
-    folder.addParmTemplate(open_in_button)
-    folder.addParmTemplate(comment_parm)
-    folder.addParmTemplate(hide_helpers)
-    folder.addParmTemplate(ctype)
-    folder.addParmTemplate(cshasset)
-    folder.addParmTemplate(csequence)
-    folder.addParmTemplate(base)
-    folder.addParmTemplate(shasset)
-    folder.addParmTemplate(etype)
-    folder.addParmTemplate(version_str)
-    folder.addParmTemplate(frame_str)
-    folder.addParmTemplate(filename)
-    folder.addParmTemplate(hou.SeparatorParmTemplate(f"{PARM_PREFIX}separator"))
+        folder_tpl.addParmTemplate(autoversion_tpl)
+    folder_tpl.addParmTemplate(version_tpl)
+    folder_tpl.addParmTemplate(version_lookup_button_tpl)
+    folder_tpl.addParmTemplate(time_dependent_tpl)
+    folder_tpl.addParmTemplate(frame_tpl)
+    folder_tpl.addParmTemplate(extension_tpl)
+    folder_tpl.addParmTemplate(open_in_button_tpl)
+    folder_tpl.addParmTemplate(comment_tpl)
+    folder_tpl.addParmTemplate(hide_helpers_tpl)
+    folder_tpl.addParmTemplate(ctype_tpl)
+    folder_tpl.addParmTemplate(cshasset_tpl)
+    folder_tpl.addParmTemplate(csequence_tpl)
+    folder_tpl.addParmTemplate(base_tpl)
+    folder_tpl.addParmTemplate(shasset_tpl)
+    folder_tpl.addParmTemplate(etype_tpl)
+    folder_tpl.addParmTemplate(version_str_tpl)
+    folder_tpl.addParmTemplate(frame_str_tpl)
+    folder_tpl.addParmTemplate(filename_tpl)
+    folder_tpl.addParmTemplate(hou.SeparatorParmTemplate(f"{PARM_PREFIX}separator"))
         
     # Insert folder at the top of the parameter list
-    ptg.insertBefore((0,), folder)
-    node.setParmTemplateGroup(ptg)
+    ptg.insertBefore((0,), folder_tpl)
+    knode.setParmTemplateGroup(ptg)
     
     # Set expressions on intermediate parameters
     # ctype expression
     ctype_expr = 'ifs(strcmp("$PRISM_SHOT", "") == 0, "asset", "shot")'
-    node.parm(f"{PARM_PREFIX}ctype").setExpression(ctype_expr, language=hou.exprLanguage.Hscript)
+    knode.parm(f"{PARM_PREFIX}ctype").setExpression(ctype_expr, language=hou.exprLanguage.Hscript)
 
     # shasset expression
     shasset_expr = f'''ifs(strcmp(chs("{PARM_PREFIX}ctype"), "shot") == 0, "Shots/" + chs("{PARM_PREFIX}csequence") + "/" + chs("{PARM_PREFIX}cshasset"), "Assets/" + chs("{PARM_PREFIX}cshasset"))'''
-    node.parm(f"{PARM_PREFIX}shasset").setExpression(shasset_expr, language=hou.exprLanguage.Hscript)
+    knode.parm(f"{PARM_PREFIX}shasset").setExpression(shasset_expr, language=hou.exprLanguage.Hscript)
 
     # etype: maps from type
     etype_expr = f'''ifs(strcmp(chs("{PARM_PREFIX}type"), "Product") == 0, "Export", ifs(strcmp(chs("{PARM_PREFIX}type"), "Playblast") == 0, "Playblasts", ifs(strcmp(chs("{PARM_PREFIX}type"), "3dRender") == 0, "Renders/3dRender", "Renders/2dRender")))'''
-    node.parm(f"{PARM_PREFIX}etype").setExpression(
+    knode.parm(f"{PARM_PREFIX}etype").setExpression(
         etype_expr,
         language=hou.exprLanguage.Hscript
     )
 
     # version_str: "v001"
-    node.parm(f"{PARM_PREFIX}version_str").setExpression(
+    knode.parm(f"{PARM_PREFIX}version_str").setExpression(
         f'"v" + padzero(4, ch("{PARM_PREFIX}version"))',
         language=hou.exprLanguage.Hscript
     )
@@ -547,7 +545,7 @@ else:
    
     
     # frame_str: ".0001" if time_dependent, else ""
-    node.parm(f"{PARM_PREFIX}frame_str").setExpression(
+    knode.parm(f"{PARM_PREFIX}frame_str").setExpression(
         f'ifs(ch("{PARM_PREFIX}time_dependent"), "." + chs("{PARM_PREFIX}frame"), "")',
         language=hou.exprLanguage.Hscript
     )
@@ -566,7 +564,7 @@ else:
         filename_expr += f'''
         + chs("{PARM_PREFIX}extension")'''
     
-    node.parm(f"{PARM_PREFIX}filename").setExpression(
+    knode.parm(f"{PARM_PREFIX}filename").setExpression(
         filename_expr,
         language=hou.exprLanguage.Hscript
     )
@@ -575,28 +573,31 @@ else:
     hscript_expr = f'chs("{PARM_PREFIX}base") + "/" + chs("{PARM_PREFIX}shasset") + "/" + chs("{PARM_PREFIX}etype") + "/" + chs("{PARM_PREFIX}identifier") + "/" + chs("{PARM_PREFIX}version_str") + "/" + chs("{PARM_PREFIX}filename")'
     
     if is_octane_rop:
-        parm.set('`'+ hscript_expr + '`')
+        kparm.set('`'+ hscript_expr + '`')
     else:
-        parm.setExpression(hscript_expr, language=hou.exprLanguage.Hscript)        
+        kparm.setExpression(hscript_expr, language=hou.exprLanguage.Hscript)        
 
+    '''
+    PRE/POST RENDER SCRIPTS
+    '''
     # If the node has a postrender script parm, set it to write versioninfo.json
-    postrender_parm = node.parm("postrender")
+    postrender_parm = knode.parm("postrender")
     if postrender_parm is not None:
-        node.parm("tpostrender").set(1)
-        node.parm("lpostrender").set("python")
+        knode.parm("tpostrender").set(1)
+        knode.parm("lpostrender").set("python")
         # Use a Python block: create kwargs from current node and call writer with the file parm name
         python_block = f"""
 import prism_callbacks
-prism_callbacks.write_version_info('`opfullpath(".")`', '{parm.name()}')
+prism_callbacks.write_version_info('`opfullpath(".")`', '{kparm.name()}')
 """        
         postrender_parm.set(python_block)
 
     # If the node has a prerender script parm, set it to press latest version
-    prerender_parm = node.parm("prerender")
+    prerender_parm = knode.parm("prerender")
     if prerender_parm is not None:
         # node.parm("tprerender").set(1)
-        node.parm("tprerender").setExpression(f'ch("{PARM_PREFIX}autoversion")') # set if autoversion enabled
-        node.parm("lprerender").set("python")        
+        knode.parm("tprerender").setExpression(f'ch("{PARM_PREFIX}autoversion")') # set if autoversion enabled
+        knode.parm("lprerender").set("python")        
         pre_python = f"""
 hou.parm('`opfullpath(".")`/'+'{PARM_PREFIX}version_lookup').pressButton()
 v = hou.parm('`opfullpath(".")`/'+'{PARM_PREFIX}version')
@@ -605,23 +606,117 @@ v.set(v.evalAsInt() + 1)
         prerender_parm.set(pre_python)
 
     # ensure version lookup is run once to set initial version
-    node.parm(f'{PARM_PREFIX}version_lookup').pressButton()
+    knode.parm(f'{PARM_PREFIX}version_lookup').pressButton()
 
+    
+    '''
+    CUSTOM LINKS BASED ON NODE TYPE
+    '''
     ### TIME DEPENDENT DEFAULTS
     # Link time_dependent based on node type specifics
     
-    td_parm = node.parm(f"{PARM_PREFIX}time_dependent")
+    td_parm = knode.parm(f"{PARM_PREFIX}time_dependent")    
     
-    optype_name = node.type().name().lower()
     # For filecache types, mirror the node's existing 'timedependent' parm
-    if "filecache" in optype_name and node.parm("timedependent") is not None:
-        td_parm.set(node.parm("timedependent"))
+    if "filecache" in optype_name and knode.parm("timedependent") is not None:
+        td_parm.set(knode.parm("timedependent"))
     # For rop_* nodes, link to trange == "off" (single frame -> not time dependent)
     # elif optype_name.startswith("rop_geo") and node.parm("trange") is not None:
     #     td_parm.setExpression('ifs(strcmp(chs("trange"), "off") == 0, 0, 1)', language=hou.exprLanguage.Hscript)
     
         
+def convert_node_prism(kwargs):    
+    """
+    Docstring for convert_node_prism
     
+    calls convert_parm_prism on the file parameter of the node, if found in config
+    """
+
+    def _notify(message: str) -> None:
+        try:
+            if "hou" in globals() and hasattr(hou, "ui"):
+                hou.ui.displayMessage(message)
+                return
+        except Exception:
+            pass
+        print(message)
+
+    node = kwargs.get("node")
+    if node is None:
+        parms = kwargs.get("parms") or []
+        if parms:
+            try:
+                node = parms[0].node()
+            except Exception:
+                node = None
+
+    if node is None:
+        _notify("convert_node_prism: No node provided in kwargs")
+        return
+
+    config = load_config()
+    settings = config.get("convert_node_prism", {})
+    nodes_cfg = settings.get("nodes", {})
+
+    optype = node.type().name()
+    optype_lower = optype.lower()
+
+    matching_keys = [key for key in nodes_cfg if key.lower() in optype_lower]
+    best_key = max(matching_keys, key=len) if matching_keys else None
+
+    node_cfg = nodes_cfg.get(best_key) if best_key is not None else None
+    enabled_default = bool(settings.get("default_enabled", False))
+
+    enabled = enabled_default
+    candidate_parm_names: list[str] = []
+
+    if isinstance(node_cfg, dict):
+        enabled = bool(node_cfg.get("enabled", enabled_default))
+        if "parm" in node_cfg and node_cfg["parm"]:
+            candidate_parm_names = [str(node_cfg["parm"])]
+        elif "parms" in node_cfg and node_cfg["parms"]:
+            candidate_parm_names = [str(p) for p in node_cfg["parms"]]
+    elif isinstance(node_cfg, str) and node_cfg:
+        enabled = enabled_default
+        candidate_parm_names = [node_cfg]
+    else:
+        # No explicit mapping found; only proceed if default_enabled is true.
+        enabled = enabled_default
+
+    if not enabled:
+        if best_key is None:
+            _notify(f"convert_node_prism: No mapping for '{optype}' (and default_enabled=false)")
+        else:
+            _notify(f"convert_node_prism: Mapping '{best_key}' is disabled")
+        return
+
+    if not candidate_parm_names:
+        candidate_parm_names = list(settings.get("default_file_parms", []))
+
+    if not candidate_parm_names:
+        _notify("convert_node_prism: No candidate parm names configured")
+        return
+
+    target_parm = None
+    for parm_name in candidate_parm_names:
+        try:
+            target_parm = node.parm(parm_name)
+        except Exception:
+            target_parm = None
+        if target_parm is not None:
+            break
+
+    if target_parm is None:
+        _notify(
+            "convert_node_prism: Couldn't find an output parm on node "
+            f"'{node.path()}' (type '{optype}'). Tried: {candidate_parm_names}"
+        )
+        return
+
+    forward_kwargs = dict(kwargs)
+    forward_kwargs["node"] = node
+    forward_kwargs["parms"] = [target_parm]
+    convert_parm_prism(forward_kwargs)
     
     
 def context_to_formula(context, export_type):
@@ -658,7 +753,7 @@ def context_to_formula(context, export_type):
 def version_lookup_callback(kwargs):
     """
     Used as a callback for autoversion behaviour and "latest" button.
-    Depends on handle_prism_versioning() having first created the helper parameters.
+    Depends on convert_parm_prism() having first created the helper parameters.
     Finds the latest version in the output directory and sets the version
     parameter to the latest existing version. Sets to 0 if no versions exist.
 

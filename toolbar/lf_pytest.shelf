@@ -7,6 +7,8 @@
 
   <toolshelf name="LF_PRISM" label="LF Prism">
     <memberTool name="LF Pytest"/>
+    <memberTool name="reload python"/>
+    <memberTool name="pipe parm prefs"/>
   </toolshelf>
 
   <tool name="LF Pytest" label="LF Pytest" icon="MISC_python">
@@ -16,5 +18,30 @@
 import lf_pytest_runner
 importlib.reload(lf_pytest_runner)
 lf_pytest_runner.run()]]></script>
+  </tool>
+
+    <tool name="reload python" label="reload python" icon="MISC_python">
+    <helpText><![CDATA["""Reloads lf_prism Python modules.
+  """]]></helpText>
+          <script scriptType="python"><![CDATA[import importlib    
+import lf_pytest_runner
+import parm_menu_callbacks
+import prism_callbacks
+
+importlib.reload(prism_callbacks)
+importlib.reload(parm_menu_callbacks)
+importlib.reload(lf_pytest_runner)]]></script>
+    </tool>
+
+  <tool name="pipe parm prefs" label="pipe parm prefs" icon="MISC_python">
+    <helpText><![CDATA["""Configure user preferences for the pipe parm tooling.
+Preferences are saved into python3.11libs as a .toml.
+"""]]></helpText>
+    <script scriptType="python"><![CDATA[import importlib
+
+import pipe_parm_prefs
+
+importlib.reload(pipe_parm_prefs)
+pipe_parm_prefs.show()]]></script>
   </tool>
 </shelfDocument>

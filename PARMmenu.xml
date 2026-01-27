@@ -3,17 +3,17 @@
     <!-- Extend the parameter context menu -->
     <menu>
         <scriptItem id="versionned_path">
-            <label>Versionned path</label>
+            <label>[LF] Pipe Parms</label>
             <scriptCode><![CDATA[
 import parm_menu_callbacks
-parm_menu_callbacks.handle_versionned_path(kwargs)
+parm_menu_callbacks.convert_parm(kwargs)
 ]]></scriptCode>
         </scriptItem>
         <scriptItem id="prism_versionning">
-            <label>Prism Versionning</label>
+            <label>[LF] Pipe Parms Prism</label>
             <scriptCode><![CDATA[
 import prism_callbacks
-prism_callbacks.handle_prism_versioning(kwargs)
+prism_callbacks.convert_parm_prism(kwargs)
 ]]></scriptCode>
         </scriptItem>
     </menu>

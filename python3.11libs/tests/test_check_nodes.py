@@ -1,6 +1,7 @@
 # create geo node in current session
 import hou
 
+PREFIX = "_lf_"
 # list of OP dicts to test for (inline)
 OPs: list[dict] = [
     {"label": "file_sop", "context": "geo", "name": "file","parm": "file"},
@@ -22,8 +23,7 @@ def build_scene() -> None:
     context_node = None
     for op in OPs:
         context = op['context']
-        name = op['name']
-        # parm = op['parm']
+        name = op['name']        
         
         context_node = hou.node(f'/obj/{context}')
         # create context node in /obj for clarity        
@@ -32,12 +32,53 @@ def build_scene() -> None:
         # create node
         rop_node = context_node.createNode(name)
         
-    
 
-    
-
-def test_create_geo_node() -> None:
-    """Create a Geometry (SOP) node in the current Houdini session."""
+def test_versionning_single() -> None:
+    """
+    Checks the simple versionning that works on any file
+    """
     build_scene()
-    assert True
+
+    ele = [op for op in OPs if op['label'] == 'mantra'][0]
+    n = hou.node(f'/obj/{ele["context"]}/{ele["name"]}')
+    kwargs = {
+        'node': n,
+        'parms': [n.parm(ele['parm'])],
+    }
+    
+    import parm_menu_callbacks
+    parm_menu_callbacks.convert_parm(kwargs)    
+
+    version_parm = n.parm(f'{PREFIX}version')
+
+    # default version should be 0 as no version folders exist yet
+    assert version_parm is not None
+    assert version_parm.evalAsInt() == 0
+
+def test_prism_versionning_single() -> None:
+    """
+    Checks the prism versionning that requires to be part of prism pipeline
+    """
+    build_scene()
+
+    ele = [op for op in OPs if op['label'] == 'mantra'][0]
+    n = hou.node(f'/obj/{ele["context"]}/{ele["name"]}')
+    kwargs = {
+        'node': n,
+        'parms': [n.parm(ele['parm'])],
+    }
+    
+    import prism_callbacks
+    prism_callbacks.convert_parm_prism(kwargs)
+
+    type_parm = n.parm(f'{PREFIX}type')
+    assert type_parm is not None
+    assert type_parm.evalAsString() == '3dRender'
+
+    version_parm = n.parm(f'{PREFIX}version')
+    # default version should be 0 as no version folders exist yet
+    assert version_parm is not None
+    assert version_parm.evalAsInt() == 0
+
+    
     
