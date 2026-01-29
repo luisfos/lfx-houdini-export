@@ -1,5 +1,4 @@
-"""
-Docstring for python3.11libs.pytest_runner
+"""Run pytest inside Houdini.
 
 Note to user:
 If pytest is not installed, install it via hython and pip:
@@ -17,20 +16,20 @@ from pathlib import Path
 
 
 def _repo_root() -> Path:
-    # This file lives in <repo>/python3.11libs/
-    return Path(__file__).resolve().parents[1]
+    # This file lives in <repo>/python3.11libs/lfx/
+    return Path(__file__).resolve().parents[2]
 
 
 def _tests_path(repo_root: Path) -> Path:
-    # Tests live under <repo>/python3.11libs/tests
-    return repo_root / "python3.11libs" / "tests"
+    # Tests live under <repo>/python3.11libs/lfx/tests
+    return repo_root / "python3.11libs" / "lfx" / "tests"
 
 
 def run() -> int:
     """Run pytest inside the current Houdini Python session.
 
     Designed to be called from a shelf tool:
-        import pytest_runner
+        from lfx import pytest_runner
         pytest_runner.run()
     """
     import pytest

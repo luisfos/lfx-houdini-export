@@ -5,7 +5,7 @@ This module contains callback functions for custom parameter context menu items.
 
 Put this in python source editor to reload module:
 import importlib
-import exporter_prism_callbacks
+import lfx.exporter_prism_callbacks as exporter_prism_callbacks
 importlib.reload(exporter_prism_callbacks)
 
 
@@ -266,8 +266,8 @@ def convert_parm_prism(kwargs):
         menu_type=hou.menuType.Normal,
         string_type=hou.stringParmType.Regular,
         script_callback="""
-import exporter_prism_callbacks
-exporter_prism_callbacks.on_context_changed(kwargs)
+    import lfx.exporter_prism_callbacks as exporter_prism_callbacks
+    exporter_prism_callbacks.on_context_changed(kwargs)
 """,
         script_callback_language=hou.scriptLanguage.Python
     )
@@ -293,8 +293,8 @@ exporter_prism_callbacks.on_context_changed(kwargs)
         menu_labels=[],
         menu_type=hou.menuType.StringReplace,
         item_generator_script="""
-import exporter_prism_callbacks
-return exporter_prism_callbacks.get_existing_identifiers(kwargs)
+    import lfx.exporter_prism_callbacks as exporter_prism_callbacks
+    return exporter_prism_callbacks.get_existing_identifiers(kwargs)
 """,
         item_generator_script_language=hou.scriptLanguage.Python
     )
@@ -319,8 +319,8 @@ kwargs['node'].parm('{PARM_PREFIX}version_lookup').pressButton()
         f"{PARM_PREFIX}version_lookup",
         "Latest",
         script_callback="""
-import exporter_prism_callbacks
-exporter_prism_callbacks.version_lookup_callback(kwargs)
+    import lfx.exporter_prism_callbacks as exporter_prism_callbacks
+    exporter_prism_callbacks.version_lookup_callback(kwargs)
 """,
         script_callback_language=hou.scriptLanguage.Python
     )
@@ -359,8 +359,8 @@ exporter_prism_callbacks.version_lookup_callback(kwargs)
         f"{PARM_PREFIX}open_in",
         "Open Folder",
         script_callback=f"""
-import exporter_prism_callbacks
-exporter_prism_callbacks.open_folder_callback(kwargs, parm_name='{kparm.name()}')
+    import lfx.exporter_prism_callbacks as exporter_prism_callbacks
+    exporter_prism_callbacks.open_folder_callback(kwargs, parm_name='{kparm.name()}')
 """,
         script_callback_language=hou.scriptLanguage.Python
     )
@@ -617,8 +617,8 @@ else:
         knode.parm("lpostrender").set("python")
         # Use a Python block: create kwargs from current node and call writer with the file parm name
         python_block = f"""
-import exporter_prism_callbacks
-exporter_prism_callbacks.write_version_info('`opfullpath(".")`', '{kparm.name()}')
+    import lfx.exporter_prism_callbacks as exporter_prism_callbacks
+    exporter_prism_callbacks.write_version_info('`opfullpath(".")`', '{kparm.name()}')
 """        
         postrender_parm.set(python_block)
 

@@ -6,21 +6,21 @@
             <scriptItem id="quicksave">
                 <actionId>Quicksave</actionId>
                 <label>Quicksave</label>
-                <scriptCode scriptType="python"><![CDATA[import mplay_exporter; mplay_exporter.main(kwargs)]]></scriptCode>
+                <scriptCode scriptType="python"><![CDATA[from lfx import mplay_exporter; mplay_exporter.main(kwargs)]]></scriptCode>
             </scriptItem>
             <scriptItem id="save">
                 <actionId>Save...</actionId>
                 <label>Save...</label>
-                <scriptCode scriptType="python"><![CDATA[import mplay_exporter; mplay_exporter.main(kwargs)]]></scriptCode>
+                <scriptCode scriptType="python"><![CDATA[from lfx import mplay_exporter; mplay_exporter.main(kwargs)]]></scriptCode>
             </scriptItem>
             <scriptItem id="debug">
                 <label>Debug</label>
-                <scriptCode scriptType="python"><![CDATA[import mplay_exporter; mplay_exporter.main(kwargs)]]></scriptCode>
+                <scriptCode scriptType="python"><![CDATA[from lfx import mplay_exporter; mplay_exporter.main(kwargs)]]></scriptCode>
             </scriptItem>
             <separatorItem />
             <scriptItem id="reload">
                 <label>Reload</label>
-                <scriptCode scriptType="python"><![CDATA[from importlib import reload; import mplay_exporter; reload(mplay_exporter); mplay_exporter.main(kwargs)]]></scriptCode>
+                <scriptCode scriptType="python"><![CDATA[from importlib import reload; import lfx.mplay_exporter as mplay_exporter; reload(mplay_exporter); mplay_exporter.main(kwargs)]]></scriptCode>
             </scriptItem>
         </subMenu>
     </menuBar>

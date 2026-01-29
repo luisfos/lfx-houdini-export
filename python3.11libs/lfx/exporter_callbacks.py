@@ -5,7 +5,7 @@ This module contains callback functions for custom parameter context menu items.
 
 Put this in python source editor to reload module:
 import importlib
-import exporter_callbacks
+import lfx.exporter_callbacks as exporter_callbacks
 importlib.reload(exporter_callbacks)
 
 
@@ -201,7 +201,7 @@ kwargs['node'].parm('{PARM_PREFIX}version_lookup').pressButton()
         f"{PARM_PREFIX}version_lookup",
         "Latest",
         script_callback="""
-import exporter_callbacks
+import lfx.exporter_callbacks as exporter_callbacks
 exporter_callbacks.version_lookup_callback(kwargs)
 """,
         script_callback_language=hou.scriptLanguage.Python

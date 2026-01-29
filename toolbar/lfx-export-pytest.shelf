@@ -15,31 +15,30 @@
     <helpText><![CDATA["""Runs the repo pytest suite using hython and shows the output.
 """]]></helpText>
     <script scriptType="python"><![CDATA[import importlib
-import pytest_runner
+from lfx import pytest_runner
 importlib.reload(pytest_runner)
 pytest_runner.run()]]></script>
   </tool>
 
-    <tool name="reload python" label="reload python" icon="MISC_python">
+  <tool name="reload python" label="reload python" icon="MISC_python">
     <helpText><![CDATA["""Reloads lfx_export Python modules.
   """]]></helpText>
-          <script scriptType="python"><![CDATA[import importlib    
-import pytest_runner
-import exporter_callbacks
-import exporter_prism_callbacks
+    <script scriptType="python"><![CDATA[import importlib    
+from lfx import pytest_runner
+from lfx import exporter_callbacks
+from lfx import exporter_prism_callbacks
 
 importlib.reload(exporter_prism_callbacks)
 importlib.reload(exporter_callbacks)
 importlib.reload(pytest_runner)]]></script>
-    </tool>
+  </tool>
 
   <tool name="Exporter Preferences" label="Exporter Preferences" icon="MISC_python">
     <helpText><![CDATA["""Configure user preferences for the pipe parm tooling.
 Preferences are saved into python3.11libs as a .toml.
 """]]></helpText>
     <script scriptType="python"><![CDATA[import importlib
-
-import preferences_ui
+from lfx import preferences_ui
 
 importlib.reload(preferences_ui)
 preferences_ui.show()]]></script>

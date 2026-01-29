@@ -5,14 +5,14 @@
         <scriptItem id="exporter">
             <label>[LFX] Exporter</label>
             <scriptCode><![CDATA[
-import exporter_callbacks
+from lfx import exporter_callbacks
 exporter_callbacks.convert_parm(kwargs)
 ]]></scriptCode>
         </scriptItem>
         <scriptItem id="prism_exporter">
             <label>[LFX] Prism Exporter</label>
             <scriptCode><![CDATA[
-import exporter_prism_callbacks
+from lfx import exporter_prism_callbacks
 exporter_prism_callbacks.convert_parm_prism(kwargs)
 ]]></scriptCode>
         </scriptItem>

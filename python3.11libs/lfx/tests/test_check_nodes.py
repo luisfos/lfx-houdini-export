@@ -1,7 +1,7 @@
 # create geo node in current session
 import hou
 
-PREFIX = "_lf_"
+PREFIX = "_lfx_"
 # list of OP dicts to test for (inline)
 OPs: list[dict] = [
     {"label": "file_sop", "context": "geo", "name": "file","parm": "file"},
@@ -46,8 +46,8 @@ def test_versionning_single() -> None:
         'parms': [n.parm(ele['parm'])],
     }
     
-    import exporter_callbacks
-    exporter_callbacks.convert_parm(kwargs)    
+    from lfx import exporter_callbacks
+    exporter_callbacks.convert_parm(kwargs)
 
     version_parm = n.parm(f'{PREFIX}version')
 
@@ -68,7 +68,7 @@ def test_prism_versionning_single() -> None:
         'parms': [n.parm(ele['parm'])],
     }
     
-    import exporter_prism_callbacks
+    from lfx import exporter_prism_callbacks
     exporter_prism_callbacks.convert_parm_prism(kwargs)
 
     type_parm = n.parm(f'{PREFIX}type')

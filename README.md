@@ -24,6 +24,7 @@ No slow python calls
 - once spare parameters added, no dependency needed.
 - config only affects how spare parameters are initialised
 - QoL & convenience for vanilla houdini experience.
+- default base folder exports within $HIP
 - customisable config to your own preferences
 - Compatible with FX, Indie & Educational?
 

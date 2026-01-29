@@ -1,6 +1,6 @@
 auto_add_to_new_node = false
-pipeline = "from config"
 base_folder = "$HIP"
+pipeline = "base"
 
 [nodes."Driver/alembic"]
 enabled = true
