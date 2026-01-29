@@ -213,8 +213,8 @@ def convert_parm_prism(kwargs):
     default_type = optype_config.get("default_type", "Product")
     
     # Create a spare folder with versioned path parameters
-    folder_name = f"{PARM_PREFIX}prism_pipe_folder"
-    folder_label = "Prism Pipe Parms"
+    folder_name = f"{PARM_PREFIX}prism_folder"
+    folder_label = "LFX Prism Export"
     
     # Check if the folder already exists - if so, remove it and clear the expression
     existing_folder_parm = knode.parm(folder_name)
@@ -286,8 +286,7 @@ exporter_prism_callbacks.on_context_changed(kwargs)
     identifier_tpl = hou.StringParmTemplate(
         f"{PARM_PREFIX}identifier",
         "Identifier",
-        1,
-        # default_value=["$OS"],
+        1,        
         default_value=[ knode.name() ],
         string_type=hou.stringParmType.Regular,
         menu_items=[],

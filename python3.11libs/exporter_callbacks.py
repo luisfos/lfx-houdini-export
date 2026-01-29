@@ -87,8 +87,8 @@ def convert_parm(kwargs):
     base_folder_default = optype_config.get("base_folder", "$HIP/geo")
     
     # Create a spare folder with versioned path parameters
-    folder_name = f"{PARM_PREFIX}versioned_path_folder"
-    folder_label = "Versioned Path Settings"
+    folder_name = f"{PARM_PREFIX}exporter_folder"
+    folder_label = "LFX Export"
     
     # Check if the folder already exists - if so, remove it and clear the expression
     existing_folder = node.parm(folder_name)
