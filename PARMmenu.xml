@@ -2,18 +2,18 @@
 <menuDocument>
     <!-- Extend the parameter context menu -->
     <menu>
-        <scriptItem id="versionned_path">
-            <label>[LF] Pipe Parms</label>
+        <scriptItem id="exporter">
+            <label>[LFX] Exporter</label>
             <scriptCode><![CDATA[
-import parm_menu_callbacks
-parm_menu_callbacks.convert_parm(kwargs)
+import exporter_callbacks
+exporter_callbacks.convert_parm(kwargs)
 ]]></scriptCode>
         </scriptItem>
-        <scriptItem id="prism_versionning">
-            <label>[LF] Pipe Parms Prism</label>
+        <scriptItem id="prism_exporter">
+            <label>[LFX] Prism Exporter</label>
             <scriptCode><![CDATA[
-import prism_callbacks
-prism_callbacks.convert_parm_prism(kwargs)
+import exporter_prism_callbacks
+exporter_prism_callbacks.convert_parm_prism(kwargs)
 ]]></scriptCode>
         </scriptItem>
     </menu>

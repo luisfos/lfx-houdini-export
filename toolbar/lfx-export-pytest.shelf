@@ -5,43 +5,43 @@
  Note, that two definitions of the same element are not allowed in
  a single file. -->
 
-  <toolshelf name="LF_PRISM" label="LF Prism">
-    <memberTool name="LF Pytest"/>
+  <toolshelf name="LFX" label="LFX">
+    <memberTool name="Pytest"/>
     <memberTool name="reload python"/>
-    <memberTool name="pipe parm prefs"/>
+    <memberTool name="Exporter Preferences"/>
   </toolshelf>
 
-  <tool name="LF Pytest" label="LF Pytest" icon="MISC_python">
+  <tool name="Pytest" label="Pytest" icon="MISC_python">
     <helpText><![CDATA["""Runs the repo pytest suite using hython and shows the output.
 """]]></helpText>
     <script scriptType="python"><![CDATA[import importlib
-import lf_pytest_runner
-importlib.reload(lf_pytest_runner)
-lf_pytest_runner.run()]]></script>
+import pytest_runner
+importlib.reload(pytest_runner)
+pytest_runner.run()]]></script>
   </tool>
 
     <tool name="reload python" label="reload python" icon="MISC_python">
-    <helpText><![CDATA["""Reloads lf_prism Python modules.
+    <helpText><![CDATA["""Reloads lfx_export Python modules.
   """]]></helpText>
           <script scriptType="python"><![CDATA[import importlib    
-import lf_pytest_runner
-import parm_menu_callbacks
-import prism_callbacks
+import pytest_runner
+import exporter_callbacks
+import exporter_prism_callbacks
 
-importlib.reload(prism_callbacks)
-importlib.reload(parm_menu_callbacks)
-importlib.reload(lf_pytest_runner)]]></script>
+importlib.reload(exporter_prism_callbacks)
+importlib.reload(exporter_callbacks)
+importlib.reload(pytest_runner)]]></script>
     </tool>
 
-  <tool name="pipe parm prefs" label="pipe parm prefs" icon="MISC_python">
+  <tool name="Exporter Preferences" label="Exporter Preferences" icon="MISC_python">
     <helpText><![CDATA["""Configure user preferences for the pipe parm tooling.
 Preferences are saved into python3.11libs as a .toml.
 """]]></helpText>
     <script scriptType="python"><![CDATA[import importlib
 
-import pipe_parm_prefs
+import preferences_ui
 
-importlib.reload(pipe_parm_prefs)
-pipe_parm_prefs.show()]]></script>
+importlib.reload(preferences_ui)
+preferences_ui.show()]]></script>
   </tool>
 </shelfDocument>

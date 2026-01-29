@@ -38,12 +38,12 @@ def setup_logger():
 
 logger = setup_logger()
 
-# --- Identifier discovery (copied/adapted from prism_callbacks) ---
+# --- Identifier discovery (copied/adapted from exporter_prism_callbacks) ---
 def get_existing_identifiers_for_mplay() -> list[str]:
     """
     Finds existing identifiers in the output directory to populate the identifier dropdown.
 
-    Mirrors the logic of prism_callbacks.get_existing_identifiers but derives paths
+    Mirrors the logic of exporter_prism_callbacks.get_existing_identifiers but derives paths
     from Prism environment variables for MPlay (Playblasts context).
     Returns a simple list of identifier names.
     """
@@ -1224,7 +1224,7 @@ def main(kwargs):
 
         logger.info("Debug action triggered")
     elif action_id == "reload":
-        logger.info("prism_mplay module reloaded.")
+        logger.info("mplay_export module reloaded.")
     else:
         logger.warning(f"Unknown action: {action_id}")
 

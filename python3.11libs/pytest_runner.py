@@ -1,5 +1,5 @@
 """
-Docstring for python3.11libs.lf_pytest_runner
+Docstring for python3.11libs.pytest_runner
 
 Note to user:
 If pytest is not installed, install it via hython and pip:
@@ -30,8 +30,8 @@ def run() -> int:
     """Run pytest inside the current Houdini Python session.
 
     Designed to be called from a shelf tool:
-        import lf_pytest_runner
-        lf_pytest_runner.run()
+        import pytest_runner
+        pytest_runner.run()
     """
     import pytest
 

@@ -46,8 +46,8 @@ def test_versionning_single() -> None:
         'parms': [n.parm(ele['parm'])],
     }
     
-    import parm_menu_callbacks
-    parm_menu_callbacks.convert_parm(kwargs)    
+    import exporter_callbacks
+    exporter_callbacks.convert_parm(kwargs)    
 
     version_parm = n.parm(f'{PREFIX}version')
 
@@ -68,8 +68,8 @@ def test_prism_versionning_single() -> None:
         'parms': [n.parm(ele['parm'])],
     }
     
-    import prism_callbacks
-    prism_callbacks.convert_parm_prism(kwargs)
+    import exporter_prism_callbacks
+    exporter_prism_callbacks.convert_parm_prism(kwargs)
 
     type_parm = n.parm(f'{PREFIX}type')
     assert type_parm is not None

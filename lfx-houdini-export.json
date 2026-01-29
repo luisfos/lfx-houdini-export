@@ -1,0 +1,15 @@
+// place this json inside HoudiniXX.X/packages
+{
+	"env": [
+	    {
+		"LFX-EXPORT": "$HOUDINI_PACKAGE_PATH/../../houCustom/lfx-houdini-export"
+	    },
+	    {
+	    	"PYTHONPATH" : { 
+                "value": "$LFX-EXPORT/python3.11libs",
+                "method": "append"
+            },
+        },
+	],
+	"path": "$LFX-EXPORT"	
+}

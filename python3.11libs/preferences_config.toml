@@ -1,4 +1,4 @@
-auto_add_to_new_node = true
+auto_add_to_new_node = false
 pipeline = "from config"
 
 [nodes."Driver/alembic"]

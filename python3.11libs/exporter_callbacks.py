@@ -5,13 +5,13 @@ This module contains callback functions for custom parameter context menu items.
 
 Put this in python source editor to reload module:
 import importlib
-import parm_menu_callbacks
-importlib.reload(parm_menu_callbacks)
+import exporter_callbacks
+importlib.reload(exporter_callbacks)
 
 
 TODO:
 - Support octane rop
-- Copy improved logic from prism_callbacks
+- Copy improved logic from exporter_prism_callbacks
 -- Handle case where no version folders exist (set version to 1)
 -- connect prerender script to autoversion
 -- autoversion toggle callback to min version to 1 when disabled
@@ -23,12 +23,12 @@ import tomllib
 from pathlib import Path
 
 # Prefix for all spare parameters
-PARM_PREFIX = "_lf_"
+PARM_PREFIX = "_lfx_"
 
 # Load configuration from TOML file
 def load_config():
     """Load the parameter menu configuration from TOML file."""
-    config_path = Path(__file__).parent / "parm_menu_config.toml"
+    config_path = Path(__file__).parent / "exporter_config.toml"
     with open(config_path, "rb") as f:
         return tomllib.load(f)
 

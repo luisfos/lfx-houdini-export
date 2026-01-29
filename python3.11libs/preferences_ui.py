@@ -10,10 +10,10 @@ try:
 except Exception:
     hou = None
 
-PREFS_TOML_PATH = os.path.join(os.path.dirname(__file__), "pipe_parm_prefs.toml")
-PRISM_CONFIG_TOML_PATH = os.path.join(os.path.dirname(__file__), "prism_config.toml")
+PREFS_TOML_PATH = os.path.join(os.path.dirname(__file__), "preferences_config.toml")
+PRISM_CONFIG_TOML_PATH = os.path.join(os.path.dirname(__file__), "exporter_prism_config.toml")
 DEFAULTS_DIR = os.path.join(os.path.dirname(__file__), "defaults")
-DEFAULT_PREFS_TOML_PATH = os.path.join(DEFAULTS_DIR, "pipe_parm_prefs.toml")
+DEFAULT_PREFS_TOML_PATH = os.path.join(DEFAULTS_DIR, "preferences_config.toml")
 
 PREFS_PIPELINE_GLOBAL_OPTIONS = ["From config", "HIP", "Prism"]
 PREFS_PIPELINE_NODE_OPTIONS = ["HIP", "Prism"]
@@ -149,7 +149,7 @@ def _toml_key(key: str) -> str:
 
 
 def _default_node_prefs() -> dict:
-    """Build default node prefs from prism_config.toml rop_settings keys."""
+    """Build default node prefs from exporter_prism_config.toml rop_settings keys."""
     if not os.path.exists(PRISM_CONFIG_TOML_PATH):
         return {}
 
@@ -454,7 +454,7 @@ class PipeParmPrefsDialog(QtWidgets.QDialog):
                 self._set_baseline_from_current()
                 return
 
-            # Reload from disk (still merges in any new node types from prism_config.toml)
+            # Reload from disk (still merges in any new node types from exporter_prism_config.toml)
             self.set_prefs(_load_prefs())
             self._set_baseline_from_current()
             return

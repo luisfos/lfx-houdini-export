@@ -5,8 +5,8 @@ This module contains callback functions for custom parameter context menu items.
 
 Put this in python source editor to reload module:
 import importlib
-import prism_callbacks
-importlib.reload(prism_callbacks)
+import exporter_prism_callbacks
+importlib.reload(exporter_prism_callbacks)
 
 
 TODO:
@@ -14,11 +14,8 @@ TODO:
 - automate testing
 - match prism custom context parms
 """
-try:
-    import hou
-except:
-    pass
 
+import hou
 import tomllib
 from pathlib import Path
 from pprint import pprint
@@ -26,12 +23,12 @@ import json
 import os
 
 # Prefix for all spare parameters
-PARM_PREFIX = "_lf_"
+PARM_PREFIX = "_lfx_"
 
 # Load configuration from TOML file
 def load_config():
     """Load the parameter menu configuration from TOML file."""
-    config_path = Path(__file__).parent / "prism_config.toml"
+    config_path = Path(__file__).parent / "exporter_prism_config.toml"
     with open(config_path, "rb") as f:
         return tomllib.load(f)
 
@@ -269,8 +266,8 @@ def convert_parm_prism(kwargs):
         menu_type=hou.menuType.Normal,
         string_type=hou.stringParmType.Regular,
         script_callback="""
-import prism_callbacks
-prism_callbacks.on_context_changed(kwargs)
+import exporter_prism_callbacks
+exporter_prism_callbacks.on_context_changed(kwargs)
 """,
         script_callback_language=hou.scriptLanguage.Python
     )
@@ -297,8 +294,8 @@ prism_callbacks.on_context_changed(kwargs)
         menu_labels=[],
         menu_type=hou.menuType.StringReplace,
         item_generator_script="""
-import prism_callbacks
-return prism_callbacks.get_existing_identifiers(kwargs)
+import exporter_prism_callbacks
+return exporter_prism_callbacks.get_existing_identifiers(kwargs)
 """,
         item_generator_script_language=hou.scriptLanguage.Python
     )
@@ -323,8 +320,8 @@ kwargs['node'].parm('{PARM_PREFIX}version_lookup').pressButton()
         f"{PARM_PREFIX}version_lookup",
         "Latest",
         script_callback="""
-import prism_callbacks
-prism_callbacks.version_lookup_callback(kwargs)
+import exporter_prism_callbacks
+exporter_prism_callbacks.version_lookup_callback(kwargs)
 """,
         script_callback_language=hou.scriptLanguage.Python
     )
@@ -363,8 +360,8 @@ prism_callbacks.version_lookup_callback(kwargs)
         f"{PARM_PREFIX}open_in",
         "Open Folder",
         script_callback=f"""
-import prism_callbacks
-prism_callbacks.open_folder_callback(kwargs, parm_name='{kparm.name()}')
+import exporter_prism_callbacks
+exporter_prism_callbacks.open_folder_callback(kwargs, parm_name='{kparm.name()}')
 """,
         script_callback_language=hou.scriptLanguage.Python
     )
@@ -621,8 +618,8 @@ else:
         knode.parm("lpostrender").set("python")
         # Use a Python block: create kwargs from current node and call writer with the file parm name
         python_block = f"""
-import prism_callbacks
-prism_callbacks.write_version_info('`opfullpath(".")`', '{kparm.name()}')
+import exporter_prism_callbacks
+exporter_prism_callbacks.write_version_info('`opfullpath(".")`', '{kparm.name()}')
 """        
         postrender_parm.set(python_block)
 
@@ -678,7 +675,7 @@ def convert_node_prism(kwargs):
         if best_match_key is None:
             _notify(
                 f"convert_node_prism: No rop_settings match for '{optype_name}'. "
-                "Add an entry in prism_config.toml under [rop_settings] with a 'parm'."
+                "Add an entry in exporter_prism_config.toml under [rop_settings] with a 'parm'."
             )
         else:
             _notify(
