@@ -13,22 +13,31 @@ except Exception:
 PREFS_TOML_PATH = os.path.join(os.path.dirname(__file__), "preferences_config.toml")
 PRISM_CONFIG_TOML_PATH = os.path.join(os.path.dirname(__file__), "exporter_prism_config.toml")
 DEFAULTS_DIR = os.path.join(os.path.dirname(__file__), "defaults")
-DEFAULT_PREFS_TOML_PATH = os.path.join(DEFAULTS_DIR, "preferences_config.toml")
+DEFAULT_PREFS_TOML_PATH = os.path.join(DEFAULTS_DIR, "pipe_parm_prefs.toml")
 
-PREFS_PIPELINE_GLOBAL_OPTIONS = ["From config", "HIP", "Prism"]
-PREFS_PIPELINE_NODE_OPTIONS = ["HIP", "Prism"]
+PREFS_PIPELINE_GLOBAL_OPTIONS = ["From config", "Base", "Prism"]
+PREFS_PIPELINE_NODE_OPTIONS = ["Base", "Prism"]
 
 
 def _pipeline_to_storage(text: str | None) -> str:
     if text is None:
         return "from config"
-    return str(text).strip().lower()
+    value = str(text).strip().lower()
+
+    # Backwards-compatible mapping: older configs used 'hip'.
+    if value in ("hip", "base"):
+        return "base"
+    if value in ("prism",):
+        return "prism"
+    if value in ("from config", "from_config", "fromconfig"):
+        return "from config"
+    return "from config"
 
 
 def _pipeline_to_display(text: str | None) -> str:
     value = _pipeline_to_storage(text)
-    if value == "hip":
-        return "HIP"
+    if value == "base":
+        return "Base"
     if value == "prism":
         return "Prism"
     return "From config"
@@ -79,15 +88,15 @@ def is_scene_in_prism_project() -> bool:
 
 
 def resolve_effective_pipeline(pipeline: str | None, prism_compatible: bool) -> str:
-    """Return the effective pipeline in storage form ('hip'|'prism'|'from config').   
+    """Return the effective pipeline in storage form ('base'|'prism'|'from config').
     """
     if not prism_compatible:
-        return "from config"
+        return "base"
     value = _pipeline_to_storage(pipeline)
     if value == "prism":
         return "prism"
-    if value == "hip":
-        return "hip"
+    if value == "base":
+        return "base"
     return "from config"
 
 
@@ -95,17 +104,20 @@ def get_effective_node_pipeline(prefs: dict, node_name_with_category: str, prism
     """Compute effective pipeline for a node.
 
     Rules:
-    - If not prism_compatible -> 'hip'
+    - If not prism_compatible -> 'base'
     - If global pipeline != 'from config' -> global (clamped by prism_compatible)
     - Else -> per-node pipeline (clamped by prism_compatible)
     """
+    if not prism_compatible:
+        return "base"
+
     global_choice = resolve_effective_pipeline(prefs.get("pipeline"), prism_compatible)
-    if global_choice in ("hip", "prism"):
+    if global_choice in ("base", "prism"):
         return global_choice
 
     nodes = prefs.get("nodes") or {}
     node_entry = nodes.get(node_name_with_category) if isinstance(nodes, dict) else None
-    node_pipeline = "hip"
+    node_pipeline = "base"
     if isinstance(node_entry, dict) and "pipeline" in node_entry:
         node_pipeline = str(node_entry.get("pipeline"))
     return resolve_effective_pipeline(node_pipeline, prism_compatible)
@@ -113,10 +125,16 @@ def get_effective_node_pipeline(prefs: dict, node_name_with_category: str, prism
 # Supported types: "str", "bool", "int", "float", "enum"
 PREFS_SPEC = [
     {
+        "key": "base_folder",
+        "label": "Base Folder",
+        "type": "str",
+        "default": "$HIP",
+    },
+    {
         "key": "auto_add_to_new_node",
         "label": "Auto add to new node",
         "type": "bool",
-        "default": True,        
+        "default": True,
     },
     {
         "key": "pipeline",
@@ -164,7 +182,7 @@ def _default_node_prefs() -> dict:
 
     nodes: dict[str, dict] = {}
     for node_name in sorted(set(node_names)):
-        nodes[node_name] = {"enabled": True, "pipeline": "hip"}
+        nodes[node_name] = {"enabled": True, "pipeline": "base"}
     return nodes
 
 
@@ -185,7 +203,7 @@ def _toml_dumps(prefs_dict: dict) -> str:
         for node_name in sorted(nodes.keys()):
             node_entry = nodes.get(node_name) or {}
             enabled = bool(node_entry.get("enabled", False))
-            pipeline = _pipeline_to_storage(node_entry.get("pipeline", "hip"))
+            pipeline = _pipeline_to_storage(node_entry.get("pipeline", "base"))
             lines.append("")
             lines.append(f"[nodes.{_toml_key(node_name)}]")
             lines.append(f"enabled = {_toml_value(enabled)}")
@@ -220,7 +238,7 @@ def _load_prefs():
         for node_name, node_entry in saved_nodes.items():
             if not isinstance(node_name, str) or not isinstance(node_entry, dict):
                 continue
-            nodes.setdefault(node_name, {"enabled": True, "pipeline": "hip"})
+            nodes.setdefault(node_name, {"enabled": True, "pipeline": "base"})
             if "enabled" in node_entry:
                 nodes[node_name]["enabled"] = bool(node_entry["enabled"])
             if "pipeline" in node_entry:
@@ -303,7 +321,14 @@ class PipeParmPrefsDialog(QtWidgets.QDialog):
             pipeline_widget.setToolTip(
                 "Controls how pipeline behaviour is selected.\n"
                 "- From config: use per-node settings in the table below\n"
-                "- HIP / Prism: force that pipeline for all nodes"
+                "- Base / Prism: force that pipeline for all nodes"
+            )
+
+        base_folder_widget = self.widgets_by_key.get("base_folder", (None, None))[0]
+        if isinstance(base_folder_widget, QtWidgets.QLineEdit):
+            base_folder_widget.setToolTip(
+                "Base folder used by the Base pipeline.\n"
+                "You can use Houdini variables like $HIP."
             )
 
         # Prism compatibility warning (hidden by default)
@@ -346,7 +371,7 @@ class PipeParmPrefsDialog(QtWidgets.QDialog):
         h2 = QtWidgets.QTableWidgetItem("Pipeline")
         h2.setToolTip(
             "Pipeline to use for this node type when global Pipeline is 'From config'.\n"
-            "If global Pipeline is set to HIP/Prism, this column is locked."
+            "If global Pipeline is set to Base/Prism, this column is locked."
         )
         table.setHorizontalHeaderItem(2, h2)
 
@@ -481,7 +506,7 @@ class PipeParmPrefsDialog(QtWidgets.QDialog):
         pipeline_widget = self.widgets_by_key.get("pipeline", (None, None))[0]
         if isinstance(pipeline_widget, QtWidgets.QComboBox):
             # 2) If auto-add disabled, disable pipeline menu.
-            pipeline_widget.setEnabled(auto_add_enabled)
+            pipeline_widget.setEnabled(auto_add_enabled and self.prism_compatible)
 
         # Requirement: hide config table when Auto add is disabled.
         self.config_box.setVisible(auto_add_enabled)
@@ -490,7 +515,7 @@ class PipeParmPrefsDialog(QtWidgets.QDialog):
         self._apply_global_pipeline_lock()
 
     def _apply_prism_compatibility_rules(self) -> None:
-        """If scene isn't in a Prism project, force HIP pipeline and hide Prism option."""
+        """If scene isn't in a Prism project, force Base pipeline and hide Prism option."""
         pipeline_widget = self.widgets_by_key.get("pipeline", (None, None))[0]
         if not isinstance(pipeline_widget, QtWidgets.QComboBox):
             return
@@ -503,7 +528,7 @@ class PipeParmPrefsDialog(QtWidgets.QDialog):
                 pipeline_widget.addItem("Prism")
             return
 
-        # Not Prism compatible: force HIP, remove Prism option, show warning.
+        # Not Prism compatible: force Base, remove Prism option, show warning.
         if self.lbl_prism_warning is not None:
             self.lbl_prism_warning.setVisible(True)
 
@@ -512,12 +537,12 @@ class PipeParmPrefsDialog(QtWidgets.QDialog):
         if idx >= 0:
             pipeline_widget.removeItem(idx)
 
-        # Force selection to HIP.
-        hip_idx = pipeline_widget.findText("HIP")
-        if hip_idx >= 0:
-            pipeline_widget.setCurrentIndex(hip_idx)
+        # Force selection to Base.
+        base_idx = pipeline_widget.findText("Base")
+        if base_idx >= 0:
+            pipeline_widget.setCurrentIndex(base_idx)
 
-        # Lock pipeline selector to HIP (forced).
+        # Lock pipeline selector to Base (forced).
         pipeline_widget.setEnabled(False)
         self._update_table_visibility()
 
@@ -584,7 +609,7 @@ class PipeParmPrefsDialog(QtWidgets.QDialog):
         for row, node_name in enumerate(row_keys):
             node_entry = nodes.get(node_name) or {}
             enabled = bool(node_entry.get("enabled", False))
-            stored_pipeline = _pipeline_to_storage(node_entry.get("pipeline", "hip"))
+            stored_pipeline = _pipeline_to_storage(node_entry.get("pipeline", "base"))
             pipeline = _pipeline_to_display(stored_pipeline)
 
             # Centered checkbox widget
@@ -722,7 +747,7 @@ class PipeParmPrefsDialog(QtWidgets.QDialog):
                     enabled = bool(chk.isChecked())
 
             # Preserve per-node pipeline even when the UI is locked to a global choice.
-            pipeline = "hip"
+            pipeline = "base"
             stored = name_item.data(QtCore.Qt.ItemDataRole.UserRole)
             if stored is not None:
                 pipeline = _pipeline_to_storage(stored)

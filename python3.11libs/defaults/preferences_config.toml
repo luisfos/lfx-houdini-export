@@ -1,5 +1,6 @@
 auto_add_to_new_node = false
 pipeline = "from config"
+base_folder = "$HIP"
 
 [nodes."Driver/alembic"]
 enabled = true
@@ -59,8 +60,8 @@ pipeline = "prism"
 
 [nodes."Sop/file"]
 enabled = true
-pipeline = "hip"
+pipeline = "base"
 
 [nodes."Sop/filecache"]
 enabled = true
-pipeline = "hip"
+pipeline = "base"

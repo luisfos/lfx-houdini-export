@@ -6,7 +6,7 @@
 extensions = [".bgeo.sc", ".bgeo", ".abc", ".usd", ".usda", ".usdc", ".vdb", ".obj", ".fbx"]
 default_extension = ".bgeo.sc"
 time_dependent = true
-base_folder = "$HIP/geo"
+base_suffix = "/geo"
 
 # ROP Geometry node
 [rop_geometry]
@@ -22,7 +22,7 @@ alias = "rop_geometry"
 extensions = [".abc"]
 default_extension = ".abc"
 time_dependent = false
-base_folder = "$HIP/abc"
+base_suffix = "/abc"
 
 # Alembic SOP (alias to rop_alembic)
 [alembic]
@@ -32,7 +32,7 @@ alias = "rop_alembic"
 [rop_image]
 extensions = [".exr", ".jpg", ".png"]
 default_extension = ".exr"
-base_folder = "$HIP/img"
+base_suffix = "/img"
 
 # USD ROP nodes
 [usd_rop]
@@ -42,7 +42,7 @@ default_extension = ".usd"
 [usdrender_rop]
 extensions = [".exr", ".jpg", ".png"]
 default_extension = ".exr"
-base_folder = "$HIP/render"
+base_suffix = "/render"
 
 # File SOP
 [file]

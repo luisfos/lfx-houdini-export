@@ -19,6 +19,14 @@ Autoversioning for easy exports, less time spent fiddling with filecaches, more 
 Another big benefit is there's no dependency, we only adds spare parameters. Therefore the file can be shared and other users don't need this tool installed. 
 No slow python calls
 
+# key points
+- non destructive parameters
+- once spare parameters added, no dependency needed.
+- config only affects how spare parameters are initialised
+- QoL & convenience for vanilla houdini experience.
+- customisable config to your own preferences
+- Compatible with FX, Indie & Educational?
+
 
 # Prism versionning
 For those using Prism pipeline, you can choose to export your files following the Prism file structure.
@@ -32,3 +40,6 @@ The tool adds a new Export menu, where you can quickly export any MPlay sequence
 - Export as image sequence / video / both
 - Space-saving modern video codecs AV1 / H265 supported
 - Autoversioning
+
+
+
