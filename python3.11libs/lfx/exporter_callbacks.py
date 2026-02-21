@@ -100,12 +100,14 @@ def convert_parm(kwargs):
         hou.ui.displayMessage("No parameter selected", severity=hou.severityType.Warning)
         return
     
-    parm = parms[0]
-    node = parm.node()
-    optype = node.type().name()
+    kparm = parms[0]
+    knode = kparm.node()
+    optype = knode.type().name()    
+    optype_name = knode.type().nameComponents()[-2].lower()
+    
 
     # Create autoversion toggle parameter only if node has a prerender parm
-    has_prerender = node.parm("prerender") is not None
+    has_prerender = knode.parm("prerender") is not None
     
     # Load configuration and get optype-specific settings
     config = load_config()
@@ -126,24 +128,24 @@ def convert_parm(kwargs):
     folder_label = "LFX Export"
     
     # Check if the folder already exists - if so, remove it and clear the expression
-    existing_folder = node.parm(folder_name)
+    existing_folder = knode.parm(folder_name)
     if existing_folder is not None:
         # Clear the expression on the original parameter
         try:
-            parm.deleteAllKeyframes()
+            kparm.deleteAllKeyframes()
         except Exception:
             pass
         
         # Remove the existing folder
-        ptg = node.parmTemplateGroup()
+        ptg = knode.parmTemplateGroup()
         try:
             ptg.remove(folder_name)
-            node.setParmTemplateGroup(ptg)
+            knode.setParmTemplateGroup(ptg)
         except Exception:
             pass
     
     # Create the folder and parameters
-    ptg = node.parmTemplateGroup()
+    ptg = knode.parmTemplateGroup()
     
     # Create folder (collapsible)
     folder = hou.FolderParmTemplate(
@@ -168,14 +170,33 @@ def convert_parm(kwargs):
         "Identifier",
         1,
         default_value=["$OS"],
-        string_type=hou.stringParmType.Regular
+        string_type=hou.stringParmType.Regular,
+        menu_items=[],
+        menu_labels=[],
+        menu_type=hou.menuType.StringReplace,
+        item_generator_script="""
+import lfx.exporter_callbacks as exporter_callbacks
+return exporter_callbacks.get_existing_identifiers(kwargs)
+""",
+        item_generator_script_language=hou.scriptLanguage.Python
     )
+    identifier.setJoinWithNext(True)
 
     # When identifier changes, press Latest to refresh version suggestion
     identifier.setScriptCallback(f"""
 kwargs['node'].parm('{PARM_PREFIX}version_lookup').pressButton()
 """)
     identifier.setScriptCallbackLanguage(hou.scriptLanguage.Python)
+
+    open_in_button = hou.ButtonParmTemplate(
+        f"{PARM_PREFIX}open_in",
+        "Open Folder",
+        script_callback=f"""
+import lfx.exporter_callbacks as exporter_callbacks
+exporter_callbacks.open_folder_callback(kwargs, parm_name='{kparm.name()}')
+""",
+        script_callback_language=hou.scriptLanguage.Python
+    )
     
     # Create version parameter
     version = hou.IntParmTemplate(
@@ -293,10 +314,21 @@ else:
         string_type=hou.stringParmType.Regular
     )
     filename.setConditional(hou.parmCondType.HideWhen, f'{{ {PARM_PREFIX}hide_helpers == 1 }}')
+
+    # Final output path helper
+    output_path = hou.StringParmTemplate(
+        f"{PARM_PREFIX}output_path",
+        "Output Path",
+        1,
+        default_value=[""],
+        string_type=hou.stringParmType.Regular
+    )
+    output_path.setConditional(hou.parmCondType.HideWhen, f'{{ {PARM_PREFIX}hide_helpers == 1 }}')
     
     # Add parameters to folder
     folder.addParmTemplate(base_folder)
     folder.addParmTemplate(identifier)
+    folder.addParmTemplate(open_in_button)
     # Place autoversion before version when present
     if has_prerender:
         folder.addParmTemplate(autoversion)
@@ -309,63 +341,72 @@ else:
     folder.addParmTemplate(version_str)
     folder.addParmTemplate(frame_str)
     folder.addParmTemplate(filename)
+    folder.addParmTemplate(output_path)
         
     # Insert folder at the top of the parameter list
     ptg.insertBefore((0,), folder)
-    node.setParmTemplateGroup(ptg)
+    knode.setParmTemplateGroup(ptg)
     
     # Set the identifier to the current node name
-    node.parm(f"{PARM_PREFIX}identifier").set(node.name())
+    knode.parm(f"{PARM_PREFIX}identifier").set(knode.name())
     
     # Set expressions on intermediate parameters
     # version_str: "v001"
-    node.parm(f"{PARM_PREFIX}version_str").setExpression(
+    knode.parm(f"{PARM_PREFIX}version_str").setExpression(
         f'"v" + padzero(3, ch("{PARM_PREFIX}version"))',
         language=hou.exprLanguage.Hscript
     )
     
     # frame_str: ".0001" if time_dependent, else ""
-    node.parm(f"{PARM_PREFIX}frame_str").setExpression(
-        f'ifs(ch("{PARM_PREFIX}time_dependent"), "." + chs("{PARM_PREFIX}frame"), "")',
-        language=hou.exprLanguage.Hscript
+    knode.parm(f"{PARM_PREFIX}frame_str").setExpression(
+        '''{ 
+    if( ch("_lfx_time_dependent")==1 ) {
+        return "." + chs("_lfx_frame");
+    } else {
+        return "";
+    }       
+}'''
+        ,language=hou.exprLanguage.Hscript
     )
     
     # filename: "identifier_v001.0001.ext" or "identifier_v001.ext"
     # Octane ROPs typically manage/expect the extension separately, so omit it.
     if optype == "octane_rop":
         filename_expr = (
-            f'chs("{PARM_PREFIX}identifier") + "_" + '
-            f'chs("{PARM_PREFIX}version_str") + '
-            f'chs("{PARM_PREFIX}frame_str")'
+            f'chs("{PARM_PREFIX}identifier") + "_" + chs("{PARM_PREFIX}version_str") + chs("{PARM_PREFIX}frame_str")'
         )
     else:
         filename_expr = (
-            f'chs("{PARM_PREFIX}identifier") + "_" + '
-            f'chs("{PARM_PREFIX}version_str") + '
-            f'chs("{PARM_PREFIX}frame_str") + '
-            f'chs("{PARM_PREFIX}extension")'
+            f'chs("{PARM_PREFIX}identifier") + "_" + chs("{PARM_PREFIX}version_str") + chs("{PARM_PREFIX}frame_str") + chs("{PARM_PREFIX}extension")'
         )
 
-    node.parm(f"{PARM_PREFIX}filename").setExpression(
+    knode.parm(f"{PARM_PREFIX}filename").setExpression(
         filename_expr,
         language=hou.exprLanguage.Hscript
     )
     
-    # Set the clicked parameter to use a simple Hscript expression
-    # Final path: base / identifier / version / filename
-    hscript_expr = f'chs("{PARM_PREFIX}base_folder") + "/" + chs("{PARM_PREFIX}identifier") + "/" + chs("{PARM_PREFIX}version_str") + "/" + chs("{PARM_PREFIX}filename")'
+    # Final path helper: base / identifier / version / filename
+    output_path_expr = f'chs("{PARM_PREFIX}base_folder") + "/" + chs("{PARM_PREFIX}identifier") + "/" + chs("{PARM_PREFIX}version_str") + "/" + chs("{PARM_PREFIX}filename")'
+
+    knode.parm(f"{PARM_PREFIX}output_path").setExpression(
+        output_path_expr,
+        language=hou.exprLanguage.Hscript
+    )
+
+    # Set the clicked parameter to evaluate output_path helper
+    target_expr = f'chs("{PARM_PREFIX}output_path")'
     
     if optype == "octane_rop":
         # Octane ROPs cannot handle expressions, so we use hscript eval
-        parm.set('`' + hscript_expr + '`')
+        kparm.set('`' + target_expr + '`')
     else:
-        parm.setExpression(hscript_expr, language=hou.exprLanguage.Hscript)
+        kparm.setExpression(target_expr, language=hou.exprLanguage.Hscript)
 
     # If the node has a prerender script parm, set it to auto-version
-    prerender_parm = node.parm("prerender")
+    prerender_parm = knode.parm("prerender")
     if prerender_parm is not None:
-        node.parm("tprerender").setExpression(f'ch("{PARM_PREFIX}autoversion")')
-        node.parm("lprerender").set("python")
+        knode.parm("tprerender").setExpression(f'ch("{PARM_PREFIX}autoversion")')
+        knode.parm("lprerender").set("python")
         pre_python = f"""
 hou.parm('`opfullpath(".")`/'+'{PARM_PREFIX}version_lookup').pressButton()
 v = hou.parm('`opfullpath(".")`/'+'{PARM_PREFIX}version')
@@ -374,7 +415,19 @@ v.set(v.evalAsInt() + 1)
         prerender_parm.set(pre_python)
 
     # Ensure version lookup is run once to set initial version
-    node.parm(f'{PARM_PREFIX}version_lookup').pressButton()
+    knode.parm(f'{PARM_PREFIX}version_lookup').pressButton()
+
+    '''
+    CUSTOM LINKS BASED ON NODE TYPE
+    '''
+    ### TIME DEPENDENT DEFAULTS
+    # Link time_dependent based on node type specifics
+    
+    td_parm = knode.parm(f"{PARM_PREFIX}time_dependent")    
+    
+    # For filecache types, mirror the node's existing 'timedependent' parm
+    if "filecache" in optype_name and knode.parm("timedependent") is not None:
+        td_parm.set(knode.parm("timedependent"))
 
 
 def version_lookup_callback(kwargs):
@@ -421,3 +474,67 @@ def version_lookup_callback(kwargs):
         node.parm(f'{PARM_PREFIX}version').set(0)
     
     
+def open_folder_callback(kwargs, parm_name):
+    """
+    Callback function to open/explore the folder containing the output file.
+    If the folder does not exist, it tries parent directories up to X levels.
+    """
+    LEVELS = 4
+    import os
+    node = kwargs['node']
+    parm = node.parm(parm_name)
+    if not parm:
+        return
+
+    path = parm.eval()
+    if not path:
+        return
+
+    folder_path = os.path.dirname(path)
+    original_folder_path = folder_path
+
+    # Try to find a valid parent directory up to X levels up
+    for i in range(LEVELS+1):
+        if os.path.exists(folder_path):
+            os.startfile(folder_path)
+            return  # Exit after opening
+
+        # Move to parent directory
+        parent_folder = os.path.dirname(folder_path)
+        if parent_folder == folder_path:  # Reached root
+            break
+        folder_path = parent_folder
+
+    # If loop finishes without finding a folder
+    hou.ui.displayMessage(f"Folder does not exist: {original_folder_path}", severity=hou.severityType.Warning)
+
+def get_existing_identifiers(kwargs):
+    """
+    Finds existing identifiers in the output directory to populate a menu.
+    """
+    import os
+    
+    node = kwargs.get('node')
+    if not node:
+        return []
+
+    try:
+        base_path = node.parm(f'{PARM_PREFIX}base_folder').eval()
+    except AttributeError:
+        # This can happen when the menu is being built before parms are evaluated.
+        return []
+
+    lookup_dir = f'{base_path}/'
+    
+    if not os.path.isdir(lookup_dir):
+        return []
+        
+    try:
+        subfolders = [d for d in os.listdir(lookup_dir) if os.path.isdir(os.path.join(lookup_dir, d))]
+        # The menu requires a flat list of token and label pairs.
+        menu_items = []
+        for folder in subfolders:
+            menu_items.extend([folder, folder])
+        return menu_items
+    except OSError:
+        return []

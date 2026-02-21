@@ -319,8 +319,8 @@ kwargs['node'].parm('{PARM_PREFIX}version_lookup').pressButton()
         f"{PARM_PREFIX}version_lookup",
         "Latest",
         script_callback="""
-    import lfx.exporter_prism_callbacks as exporter_prism_callbacks
-    exporter_prism_callbacks.version_lookup_callback(kwargs)
+import lfx.exporter_prism_callbacks as exporter_prism_callbacks
+exporter_prism_callbacks.version_lookup_callback(kwargs)
 """,
         script_callback_language=hou.scriptLanguage.Python
     )

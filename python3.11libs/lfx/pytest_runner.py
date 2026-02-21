@@ -15,14 +15,8 @@ import contextlib
 from pathlib import Path
 
 
-def _repo_root() -> Path:
-    # This file lives in <repo>/python3.11libs/lfx/
-    return Path(__file__).resolve().parents[2]
-
-
-def _tests_path(repo_root: Path) -> Path:
-    # Tests live under <repo>/python3.11libs/lfx/tests
-    return repo_root / "python3.11libs" / "lfx" / "tests"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+TESTS_PATH = (REPO_ROOT / "python3.11libs" / "lfx" / "tests").resolve()
 
 
 def run() -> int:
@@ -34,8 +28,8 @@ def run() -> int:
     """
     import pytest
 
-    repo_root = _repo_root()
-    tests_path = _tests_path(repo_root).resolve()
+    repo_root = REPO_ROOT
+    tests_path = TESTS_PATH
 
     # Ensure local modules are importable when running in-process.
     for path in (repo_root, repo_root / "python3.11libs"):
@@ -86,12 +80,12 @@ def _show_message(message: str, *, details: str = "", is_error: bool) -> None:
     """Display in Houdini UI if available; otherwise print."""
     print(message)
     print(details)
-    try:
-        import hou  # type: ignore
+    # try:
+    #     import hou  # type: ignore
 
-        severity = hou.severityType.Error if is_error else hou.severityType.Message
-        hou.ui.displayMessage(message, details=details, severity=severity)
-    except Exception:
-        print(message)
-        if details:
-            print(details)
+    #     severity = hou.severityType.Error if is_error else hou.severityType.Message
+    #     hou.ui.displayMessage(message, details=details, severity=severity)
+    # except Exception:
+    #     print(message)
+    #     if details:
+    #         print(details)
