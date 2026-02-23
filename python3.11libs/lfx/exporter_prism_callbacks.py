@@ -17,6 +17,7 @@ TODO:
 
 import hou
 import tomllib
+import textwrap
 from pathlib import Path
 from pprint import pprint
 import json
@@ -24,6 +25,22 @@ import os
 
 # Prefix for all spare parameters
 PARM_PREFIX = "_lfx_"
+
+
+def sanitise_multiline(code: str) -> str:
+    '''
+    Checks multiline python code that is often used for houdini parameter callbacks
+    Dedents code to allow us to write nicely formatted multiline code
+    Compile() to check for syntax errors early
+    Wraps code in a dummy function to allow return statements
+    '''
+    sanitised_code = textwrap.dedent(code).strip("\n")
+    wrapped_for_compile = "def __callback_wrapper__():\n" + textwrap.indent(
+        sanitised_code or "pass",
+        "    ",
+    )
+    compile(wrapped_for_compile, "<multiline_callback>", "exec")
+    return sanitised_code
 
 # Load configuration from TOML file
 def load_config():
@@ -255,6 +272,11 @@ def convert_parm_prism(kwargs):
         string_type=hou.stringParmType.Regular
     )
 
+    context_callback_code = sanitise_multiline("""
+        import lfx.exporter_prism_callbacks as exporter_prism_callbacks
+        exporter_prism_callbacks.on_context_changed(kwargs)
+    """)
+
     # Create context parameter
     context_tpl = hou.StringParmTemplate(
         f"{PARM_PREFIX}context",
@@ -265,10 +287,7 @@ def convert_parm_prism(kwargs):
         default_value=["From Scenefile"],
         menu_type=hou.menuType.Normal,
         string_type=hou.stringParmType.Regular,
-        script_callback="""
-    import lfx.exporter_prism_callbacks as exporter_prism_callbacks
-    exporter_prism_callbacks.on_context_changed(kwargs)
-""",
+        script_callback=context_callback_code,
         script_callback_language=hou.scriptLanguage.Python
     )
     context_tpl.setHelp("If set to custom you can change the custom context hidden helper parameters.")
@@ -282,6 +301,11 @@ def convert_parm_prism(kwargs):
     context_label_tpl.hideLabel(True)
     
     
+    identifier_item_generator_code = sanitise_multiline("""
+        import lfx.exporter_prism_callbacks as exporter_prism_callbacks
+        return exporter_prism_callbacks.get_existing_identifiers(kwargs)
+    """)
+
     # Create identifier parameterparm.setExpression(hscript_expr, language=hou.exprLanguage.Hscript)        
     identifier_tpl = hou.StringParmTemplate(
         f"{PARM_PREFIX}identifier",
@@ -292,16 +316,14 @@ def convert_parm_prism(kwargs):
         menu_items=[],
         menu_labels=[],
         menu_type=hou.menuType.StringReplace,
-        item_generator_script="""
-    import lfx.exporter_prism_callbacks as exporter_prism_callbacks
-    return exporter_prism_callbacks.get_existing_identifiers(kwargs)
-""",
+        item_generator_script=identifier_item_generator_code,
         item_generator_script_language=hou.scriptLanguage.Python
     )
     # When identifier changes, press Latest to refresh version suggestion
-    identifier_tpl.setScriptCallback(f"""
-kwargs['node'].parm('{PARM_PREFIX}version_lookup').pressButton()
-""")
+    identifier_changed_callback_code = sanitise_multiline(f"""
+        kwargs['node'].parm('{PARM_PREFIX}version_lookup').pressButton()
+    """)
+    identifier_tpl.setScriptCallback(identifier_changed_callback_code)
     identifier_tpl.setScriptCallbackLanguage(hou.scriptLanguage.Python)
     identifier_tpl.setJoinWithNext(True)
     
@@ -316,13 +338,15 @@ kwargs['node'].parm('{PARM_PREFIX}version_lookup').pressButton()
     )
     version_tpl.setJoinWithNext(True)
 
+    version_lookup_button_callback_code = sanitise_multiline("""
+        import lfx.exporter_prism_callbacks as exporter_prism_callbacks
+        exporter_prism_callbacks.version_lookup_callback(kwargs)
+    """)
+
     version_lookup_button_tpl = hou.ButtonParmTemplate(
         f"{PARM_PREFIX}version_lookup",
         "Latest",
-        script_callback="""
-import lfx.exporter_prism_callbacks as exporter_prism_callbacks
-exporter_prism_callbacks.version_lookup_callback(kwargs)
-""",
+        script_callback=version_lookup_button_callback_code,
         script_callback_language=hou.scriptLanguage.Python
     )
 
@@ -356,13 +380,15 @@ exporter_prism_callbacks.version_lookup_callback(kwargs)
             hou.parmCondType.HideWhen, f"{{ {PARM_PREFIX}hide_helpers == 1 }}"
         )
 
+    open_folder_button_callback_code = sanitise_multiline(f"""
+        import lfx.exporter_prism_callbacks as exporter_prism_callbacks
+        exporter_prism_callbacks.open_folder_callback(kwargs, parm_name='{kparm.name()}')
+    """)
+
     open_folder_button_tpl = hou.ButtonParmTemplate(
         f"{PARM_PREFIX}open_in",
         "Open Folder",
-        script_callback=f"""
-    import lfx.exporter_prism_callbacks as exporter_prism_callbacks
-    exporter_prism_callbacks.open_folder_callback(kwargs, parm_name='{kparm.name()}')
-""",
+        script_callback=open_folder_button_callback_code,
         script_callback_language=hou.scriptLanguage.Python
     )
     
@@ -393,14 +419,15 @@ exporter_prism_callbacks.version_lookup_callback(kwargs)
             default_value=True
         )
         # When toggled on, press Latest to auto-pick next version
-        autoversion_tpl.setScriptCallback(f"""
-autoversion = kwargs['parm']
-if autoversion and autoversion.evalAsInt() == 1:
-    kwargs['node'].parm('{PARM_PREFIX}version_lookup').pressButton()
-else:
-    v = kwargs['node'].parm('{PARM_PREFIX}version')
-    v.set(max(v.evalAsInt(),1))
-""")
+        autoversion_toggle_callback_code = sanitise_multiline(f"""
+            autoversion = kwargs['parm']
+            if autoversion and autoversion.evalAsInt() == 1:
+                kwargs['node'].parm('{PARM_PREFIX}version_lookup').pressButton()
+            else:
+                v = kwargs['node'].parm('{PARM_PREFIX}version')
+                v.set(max(v.evalAsInt(),1))
+        """)
+        autoversion_tpl.setScriptCallback(autoversion_toggle_callback_code)
         autoversion_tpl.setScriptCallbackLanguage(hou.scriptLanguage.Python)
         autoversion_tpl.setJoinWithNext(True)
 
@@ -508,6 +535,16 @@ else:
         string_type=hou.stringParmType.Regular
     )
     filename_tpl.setConditional(hou.parmCondType.HideWhen, f'{{ {PARM_PREFIX}hide_helpers == 1 }}')
+
+    # Final output path helper
+    output_path_tpl = hou.StringParmTemplate(
+        f"{PARM_PREFIX}output_path",
+        "Output Path",
+        1,
+        default_value=[""],
+        string_type=hou.stringParmType.Regular
+    )
+    output_path_tpl.setConditional(hou.parmCondType.HideWhen, f'{{ {PARM_PREFIX}hide_helpers == 1 }}')
     
     # User comment to include in versioninfo.json
     comment_tpl = hou.StringParmTemplate(
@@ -548,6 +585,7 @@ else:
     folder_tpl.addParmTemplate(version_str_tpl)
     folder_tpl.addParmTemplate(frame_str_tpl)
     folder_tpl.addParmTemplate(filename_tpl)
+    folder_tpl.addParmTemplate(output_path_tpl)
     folder_tpl.addParmTemplate(hou.SeparatorParmTemplate(f"{PARM_PREFIX}separator"))
         
     # Insert folder at the top of the parameter list
@@ -580,7 +618,13 @@ else:
     
     # frame_str: ".0001" if time_dependent, else ""
     knode.parm(f"{PARM_PREFIX}frame_str").setExpression(
-        f'ifs(ch("{PARM_PREFIX}time_dependent"), "." + chs("{PARM_PREFIX}frame"), "")',
+        '''{ 
+    if( ch("_lfx_time_dependent")==1 ) {
+        return "." + chs("_lfx_frame");
+    } else {
+        return "";
+    }       
+}''',
         language=hou.exprLanguage.Hscript
     )
     
@@ -603,13 +647,20 @@ else:
         language=hou.exprLanguage.Hscript
     )
 
-    # Final path: type / identifier / version / filename
-    hscript_expr = f'chs("{PARM_PREFIX}base") + "/" + chs("{PARM_PREFIX}shasset") + "/" + chs("{PARM_PREFIX}etype") + "/" + chs("{PARM_PREFIX}identifier") + "/" + chs("{PARM_PREFIX}version_str") + "/" + chs("{PARM_PREFIX}filename")'
+    # Final path helper: type / identifier / version / filename
+    output_path_expr = f'chs("{PARM_PREFIX}base") + "/" + chs("{PARM_PREFIX}shasset") + "/" + chs("{PARM_PREFIX}etype") + "/" + chs("{PARM_PREFIX}identifier") + "/" + chs("{PARM_PREFIX}version_str") + "/" + chs("{PARM_PREFIX}filename")'
+
+    knode.parm(f"{PARM_PREFIX}output_path").setExpression(
+        output_path_expr,
+        language=hou.exprLanguage.Hscript
+    )
+
+    target_expr = f'chs("{PARM_PREFIX}output_path")'
     
     if is_octane_rop:
-        kparm.set('`'+ hscript_expr + '`')
+        kparm.set('`'+ target_expr + '`')
     else:
-        kparm.setExpression(hscript_expr, language=hou.exprLanguage.Hscript)        
+        kparm.setExpression(target_expr, language=hou.exprLanguage.Hscript)        
 
     '''
     PRE/POST RENDER SCRIPTS
@@ -620,11 +671,11 @@ else:
         knode.parm("tpostrender").set(1)
         knode.parm("lpostrender").set("python")
         # Use a Python block: create kwargs from current node and call writer with the file parm name
-        python_block = f"""
-    import lfx.exporter_prism_callbacks as exporter_prism_callbacks
-    exporter_prism_callbacks.write_version_info('`opfullpath(".")`', '{kparm.name()}')
-"""        
-        postrender_parm.set(python_block)
+        postrender_python_block_code = sanitise_multiline(f"""
+            import lfx.exporter_prism_callbacks as exporter_prism_callbacks
+            exporter_prism_callbacks.write_version_info('`opfullpath(".")`', '{kparm.name()}')
+        """)
+        postrender_parm.set(postrender_python_block_code)
 
     # If the node has a prerender script parm, set it to press latest version
     prerender_parm = knode.parm("prerender")
@@ -632,12 +683,12 @@ else:
         # node.parm("tprerender").set(1)
         knode.parm("tprerender").setExpression(f'ch("{PARM_PREFIX}autoversion")') # set if autoversion enabled
         knode.parm("lprerender").set("python")        
-        pre_python = f"""
-hou.parm('`opfullpath(".")`/'+'{PARM_PREFIX}version_lookup').pressButton()
-v = hou.parm('`opfullpath(".")`/'+'{PARM_PREFIX}version')
-v.set(v.evalAsInt() + 1)
-"""
-        prerender_parm.set(pre_python)
+        prerender_python_block_code = sanitise_multiline(f"""
+            hou.parm('`opfullpath(".")`/'+'{PARM_PREFIX}version_lookup').pressButton()
+            v = hou.parm('`opfullpath(".")`/'+'{PARM_PREFIX}version')
+            v.set(v.evalAsInt() + 1)
+        """)
+        prerender_parm.set(prerender_python_block_code)
 
     # ensure version lookup is run once to set initial version
     knode.parm(f'{PARM_PREFIX}version_lookup').pressButton()

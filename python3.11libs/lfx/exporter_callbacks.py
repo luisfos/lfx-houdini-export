@@ -21,12 +21,28 @@ TODO:
 import hou
 import os
 import re
+import textwrap
 import tomllib
 from pathlib import Path
 
 # Prefix for all spare parameters
 PARM_PREFIX = "_lfx_"
 
+
+def sanitise_multiline(code: str) -> str:
+    '''
+    Checks multiline python code that is often used for houdini parameter callbacks
+    Dedents code to allow us to write nicely formatted multiline code
+    Compile() to check for syntax errors early
+    Wraps code in a dummy function to allow return statements
+    '''
+    sanitised_code = textwrap.dedent(code).strip("\n")
+    wrapped_for_compile = "def __callback_wrapper__():\n" + textwrap.indent(
+        sanitised_code or "pass",
+        "    ",
+    )
+    compile(wrapped_for_compile, "<multiline_callback>", "exec")
+    return sanitised_code
 
 def load_prefs() -> dict:
     """Load user preferences from preferences_config.toml."""
@@ -164,6 +180,11 @@ def convert_parm(kwargs):
         string_type=hou.stringParmType.Regular
     )
     
+    identifier_item_generator_code = sanitise_multiline("""
+        import lfx.exporter_callbacks as exporter_callbacks
+        return exporter_callbacks.get_existing_identifiers(kwargs)
+    """)
+
     # Create identifier parameter
     identifier = hou.StringParmTemplate(
         f"{PARM_PREFIX}identifier",
@@ -174,27 +195,27 @@ def convert_parm(kwargs):
         menu_items=[],
         menu_labels=[],
         menu_type=hou.menuType.StringReplace,
-        item_generator_script="""
-import lfx.exporter_callbacks as exporter_callbacks
-return exporter_callbacks.get_existing_identifiers(kwargs)
-""",
+        item_generator_script=identifier_item_generator_code,
         item_generator_script_language=hou.scriptLanguage.Python
     )
     identifier.setJoinWithNext(True)
 
     # When identifier changes, press Latest to refresh version suggestion
-    identifier.setScriptCallback(f"""
-kwargs['node'].parm('{PARM_PREFIX}version_lookup').pressButton()
-""")
+    identifier_changed_callback_code = sanitise_multiline(f"""
+        kwargs['node'].parm('{PARM_PREFIX}version_lookup').pressButton()
+    """)
+    identifier.setScriptCallback(identifier_changed_callback_code)
     identifier.setScriptCallbackLanguage(hou.scriptLanguage.Python)
+
+    open_in_button_callback_code = sanitise_multiline(f"""
+        import lfx.exporter_callbacks as exporter_callbacks
+        exporter_callbacks.open_folder_callback(kwargs, parm_name='{kparm.name()}')
+    """)
 
     open_in_button = hou.ButtonParmTemplate(
         f"{PARM_PREFIX}open_in",
         "Open Folder",
-        script_callback=f"""
-import lfx.exporter_callbacks as exporter_callbacks
-exporter_callbacks.open_folder_callback(kwargs, parm_name='{kparm.name()}')
-""",
+        script_callback=open_in_button_callback_code,
         script_callback_language=hou.scriptLanguage.Python
     )
     
@@ -218,13 +239,15 @@ exporter_callbacks.open_folder_callback(kwargs, parm_name='{kparm.name()}')
             hou.parmCondType.DisableWhen, f"{{ {PARM_PREFIX}autoversion == 1 }}"
         )
 
+    version_lookup_button_callback_code = sanitise_multiline("""
+        import lfx.exporter_callbacks as exporter_callbacks
+        exporter_callbacks.version_lookup_callback(kwargs)
+    """)
+
     version_lookup_button = hou.ButtonParmTemplate(
         f"{PARM_PREFIX}version_lookup",
         "Latest",
-        script_callback="""
-import lfx.exporter_callbacks as exporter_callbacks
-exporter_callbacks.version_lookup_callback(kwargs)
-""",
+        script_callback=version_lookup_button_callback_code,
         script_callback_language=hou.scriptLanguage.Python
     )
 
@@ -235,14 +258,16 @@ exporter_callbacks.version_lookup_callback(kwargs)
             default_value=True
         )
         # When toggled on, press Latest to auto-pick next version
-        autoversion.setScriptCallback(f"""
-autoversion = kwargs['parm']
-if autoversion and autoversion.evalAsInt() == 1:
-    kwargs['node'].parm('{PARM_PREFIX}version_lookup').pressButton()
-else:
-    v = kwargs['node'].parm('{PARM_PREFIX}version')
-    v.set(max(v.evalAsInt(), 1))
-""")
+        autoversion_toggle_callback_code = sanitise_multiline(f"""
+            autoversion = kwargs['parm']
+            if autoversion and autoversion.evalAsInt() == 1:
+                kwargs['node'].parm('{PARM_PREFIX}version_lookup').pressButton()
+            else:
+                v = kwargs['node'].parm('{PARM_PREFIX}version')
+                v.set(max(v.evalAsInt(), 1))
+        """)
+
+        autoversion.setScriptCallback(autoversion_toggle_callback_code)
         autoversion.setScriptCallbackLanguage(hou.scriptLanguage.Python)
         autoversion.setJoinWithNext(True)
     
@@ -409,11 +434,11 @@ else:
     if prerender_parm is not None:
         knode.parm("tprerender").setExpression(f'ch("{PARM_PREFIX}autoversion")')
         knode.parm("lprerender").set("python")
-        pre_python = f"""
+        pre_python = sanitise_multiline(f"""
 hou.parm('`opfullpath(".")`/'+'{PARM_PREFIX}version_lookup').pressButton()
 v = hou.parm('`opfullpath(".")`/'+'{PARM_PREFIX}version')
 v.set(v.evalAsInt() + 1)
-"""
+    """)
         prerender_parm.set(pre_python)
 
     # Ensure version lookup is run once to set initial version
