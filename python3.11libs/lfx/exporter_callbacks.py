@@ -244,6 +244,7 @@ else:
     v.set(max(v.evalAsInt(), 1))
 """)
         autoversion.setScriptCallbackLanguage(hou.scriptLanguage.Python)
+        autoversion.setJoinWithNext(True)
     
     
     # Create extension parameter (dropdown menu with replace type)
@@ -276,6 +277,7 @@ else:
         "Time Dependent",
         default_value=time_dependent_default
     )
+    time_dependent.setJoinWithNext(True)
     
     # Create hide_helpers toggle parameter
     hide_helpers = hou.ToggleParmTemplate(

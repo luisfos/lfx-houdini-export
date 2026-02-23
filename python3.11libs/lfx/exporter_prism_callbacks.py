@@ -303,6 +303,7 @@ def convert_parm_prism(kwargs):
 kwargs['node'].parm('{PARM_PREFIX}version_lookup').pressButton()
 """)
     identifier_tpl.setScriptCallbackLanguage(hou.scriptLanguage.Python)
+    identifier_tpl.setJoinWithNext(True)
     
     # Create version parameter
     version_tpl = hou.IntParmTemplate(
@@ -355,7 +356,7 @@ exporter_prism_callbacks.version_lookup_callback(kwargs)
             hou.parmCondType.HideWhen, f"{{ {PARM_PREFIX}hide_helpers == 1 }}"
         )
 
-    open_in_button_tpl = hou.ButtonParmTemplate(
+    open_folder_button_tpl = hou.ButtonParmTemplate(
         f"{PARM_PREFIX}open_in",
         "Open Folder",
         script_callback=f"""
@@ -382,6 +383,7 @@ exporter_prism_callbacks.version_lookup_callback(kwargs)
         "Time Dependent",
         default_value=time_dependent_default
     )
+    time_dependent_tpl.setJoinWithNext(True)
 
     
     if has_prerender:
@@ -400,6 +402,7 @@ else:
     v.set(max(v.evalAsInt(),1))
 """)
         autoversion_tpl.setScriptCallbackLanguage(hou.scriptLanguage.Python)
+        autoversion_tpl.setJoinWithNext(True)
 
     # kwargs['script_value']=="on"
     
@@ -524,6 +527,7 @@ else:
     folder_tpl.addParmTemplate(context_tpl)
     folder_tpl.addParmTemplate(context_label_tpl)
     folder_tpl.addParmTemplate(identifier_tpl)
+    folder_tpl.addParmTemplate(open_folder_button_tpl)
     # Place autoversion before version when present
     if has_prerender:
         folder_tpl.addParmTemplate(autoversion_tpl)
@@ -532,7 +536,7 @@ else:
     folder_tpl.addParmTemplate(time_dependent_tpl)
     folder_tpl.addParmTemplate(frame_tpl)
     folder_tpl.addParmTemplate(extension_tpl)
-    folder_tpl.addParmTemplate(open_in_button_tpl)
+    
     folder_tpl.addParmTemplate(comment_tpl)
     folder_tpl.addParmTemplate(hide_helpers_tpl)
     folder_tpl.addParmTemplate(ctype_tpl)
