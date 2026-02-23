@@ -1,6 +1,6 @@
 [tool.pytest.ini_options]
 minversion = "7.0"
-addopts = "-ra -q"
+# addopts = "-ra -q"
 testpaths = ["python3.11libs/lfx/tests"]
 
 python_files = ["test_*.py"]

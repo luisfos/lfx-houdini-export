@@ -12,11 +12,69 @@ import os
 import sys
 import io
 import contextlib
+import subprocess
 from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TESTS_PATH = (REPO_ROOT / "python3.11libs" / "lfx" / "tests").resolve()
+
+
+def _pytest_args(tests_path: Path) -> list[str]:
+    return [
+        str(tests_path),
+        "-v",
+        "-l",
+        "--tb=short",
+        "--maxfail=1",
+        "--disable-warnings",
+        "--capture=no",
+        "-p",
+        "no:faulthandler",
+    ]
+
+
+def _find_hython() -> str:
+    """Best-effort path to hython executable."""
+    try:
+        import hou  # type: ignore
+
+        hfs = hou.getenv("HFS")
+        if hfs:
+            suffix = "hython.exe" if os.name == "nt" else "hython"
+            candidate = Path(hfs) / "bin" / suffix
+            if candidate.exists():
+                return str(candidate)
+    except Exception:
+        pass
+
+    if os.name == "nt":
+        sidefx_root = Path(r"C:\Program Files\Side Effects Software")
+        if sidefx_root.exists():
+            houdini_dirs: list[tuple[tuple[int, int, int], Path]] = []
+            for item in sidefx_root.iterdir():
+                if not item.is_dir():
+                    continue
+                name = item.name
+                if not name.startswith("Houdini "):
+                    continue
+                version_text = name.removeprefix("Houdini ").strip()
+                parts = version_text.split(".")
+                if len(parts) != 3 or not all(part.isdigit() for part in parts):
+                    continue
+                version = (int(parts[0]), int(parts[1]), int(parts[2]))
+                houdini_dirs.append((version, item))
+
+            for _, houdini_dir in sorted(houdini_dirs, key=lambda pair: pair[0], reverse=True):
+                candidate = houdini_dir / "bin" / "hython.exe"
+                if candidate.exists():
+                    return str(candidate)
+
+    suffix = "hython.exe" if os.name == "nt" else "hython"
+    candidate = Path(sys.executable).with_name(suffix)
+    if candidate.exists():
+        return str(candidate)
+    return sys.executable
 
 
 def run() -> int:
@@ -26,10 +84,10 @@ def run() -> int:
         from lfx import pytest_runner
         pytest_runner.run()
     """
-    import pytest
-
     repo_root = REPO_ROOT
     tests_path = TESTS_PATH
+
+    import pytest
 
     # Ensure local modules are importable when running in-process.
     for path in (repo_root, repo_root / "python3.11libs"):
@@ -45,18 +103,7 @@ def run() -> int:
         if mod_file and str(mod_file).startswith(tests_prefix):
             del sys.modules[name]
 
-    # flags: https://docs.pytest.org/en/6.2.x/usage.html#modifying-python-traceback-printing
-    # Keep output minimal: just the error/traceback, no captured stdout/stderr,
-    # and no verbose per-test reporting.
-    args = [
-        str(tests_path),        
-        "-v",
-        "-l",                # show local variables in tracebacks        
-        "--tb=short",         # concise tracebacks (avoids dumping full function source/docstrings)
-        # "--show-capture=no",  # don't include captured stdout/stderr
-        "--maxfail=1",        # stop after first failure
-        "--disable-warnings", # less noise
-    ]
+    args = _pytest_args(tests_path)
 
     old_cwd = os.getcwd()
     buf = io.StringIO()
@@ -72,20 +119,52 @@ def run() -> int:
         f"pytest finished with exit code: {exit_code}",
         details=output,
         is_error=(exit_code != 0),
+    )  
+    import hou  
+    hou.ui.displayMessage("Pytest finished, check the console for results.")    
+    return exit_code
+
+
+def run_hython() -> int:
+    """Run pytest in a separate hython subprocess.
+
+    Designed to be called from a shelf tool:
+        from lfx import pytest_runner
+        pytest_runner.run_hython()
+    """
+    repo_root = REPO_ROOT
+    tests_path = TESTS_PATH
+
+    command = [_find_hython(), "-m", "pytest", *_pytest_args(tests_path)]
+    proc = subprocess.run(
+        command,
+        cwd=str(repo_root),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        shell=False,
     )
+
+    output = (proc.stdout or "") + (("\n" + proc.stderr) if proc.stderr else "")
+    exit_code = int(proc.returncode)
+
+    _show_message(
+        f"pytest (hython subprocess) finished with exit code: {exit_code}",
+        details=output,
+        is_error=(exit_code != 0),
+    )
+    try:
+        import hou  # type: ignore
+
+        hou.ui.displayMessage("Pytest finished, check the console for results.")
+    except Exception:
+        pass
     return exit_code
 
 
 def _show_message(message: str, *, details: str = "", is_error: bool) -> None:
-    """Display in Houdini UI if available; otherwise print."""
     print(message)
-    print(details)
-    # try:
-    #     import hou  # type: ignore
-
-    #     severity = hou.severityType.Error if is_error else hou.severityType.Message
-    #     hou.ui.displayMessage(message, details=details, severity=severity)
-    # except Exception:
-    #     print(message)
-    #     if details:
-    #         print(details)
+    if details:
+        print(details)
+    

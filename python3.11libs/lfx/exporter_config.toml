@@ -28,7 +28,27 @@ base_suffix = "/abc"
 [alembic]
 alias = "rop_alembic"
 
-# ROP Image/Mantra
+# Generic Render ROP
+[render]
+extensions = [".exr", ".jpg", ".png"]
+default_extension = ".exr"
+base_suffix = "/render"
+
+# Mantra
+[ifd] 
+alias = "render"
+
+[usdrender_rop]
+alias = "render"
+
+[opengl]
+alias = "render"
+
+# Octane
+[Octane_ROP]
+alias = "render"
+
+# COPernicus
 [rop_image]
 extensions = [".exr", ".jpg", ".png"]
 default_extension = ".exr"
@@ -39,10 +59,7 @@ base_suffix = "/img"
 extensions = [".usd", ".usda", ".usdc"]
 default_extension = ".usd"
 
-[usdrender_rop]
-extensions = [".exr", ".jpg", ".png"]
-default_extension = ".exr"
-base_suffix = "/render"
+
 
 # File SOP
 [file]

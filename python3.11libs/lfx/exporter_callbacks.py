@@ -428,6 +428,7 @@ v.set(v.evalAsInt() + 1)
     # For filecache types, mirror the node's existing 'timedependent' parm
     if "filecache" in optype_name and knode.parm("timedependent") is not None:
         td_parm.set(knode.parm("timedependent"))
+        knode.parm('filemethod').set('explicit') # set to explicit
 
 
 def version_lookup_callback(kwargs):
