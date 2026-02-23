@@ -167,4 +167,8 @@ def _show_message(message: str, *, details: str = "", is_error: bool) -> None:
     print(message)
     if details:
         print(details)
+
+
+if __name__ == "__main__":
+    raise SystemExit(run_hython())
     
