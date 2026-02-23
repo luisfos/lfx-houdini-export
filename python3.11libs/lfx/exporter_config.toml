@@ -43,6 +43,7 @@ alias = "render"
 
 [opengl]
 alias = "render"
+base_suffix = "/flip"
 
 # Octane
 [Octane_ROP]

@@ -385,16 +385,19 @@ def convert_parm(kwargs):
     )
     
     # frame_str: ".0001" if time_dependent, else ""
+    frame_hscript_code: str = '''{ 
+            if( ch("_lfx_time_dependent")==1 ) {
+                return "." + chs("_lfx_frame");
+            } else {
+                return "";
+            }       
+        }'''
+    frame_hscript_code = textwrap.dedent(frame_hscript_code).strip("\n")
     knode.parm(f"{PARM_PREFIX}frame_str").setExpression(
-        '''{ 
-    if( ch("_lfx_time_dependent")==1 ) {
-        return "." + chs("_lfx_frame");
-    } else {
-        return "";
-    }       
-}'''
-        ,language=hou.exprLanguage.Hscript
+        frame_hscript_code,
+        language=hou.exprLanguage.Hscript
     )
+
     
     # filename: "identifier_v001.0001.ext" or "identifier_v001.ext"
     # Octane ROPs typically manage/expect the extension separately, so omit it.
@@ -421,13 +424,9 @@ def convert_parm(kwargs):
     )
 
     # Set the clicked parameter to evaluate output_path helper
-    target_expr = f'chs("{PARM_PREFIX}output_path")'
-    
-    if optype == "octane_rop":
-        # Octane ROPs cannot handle expressions, so we use hscript eval
-        kparm.set('`' + target_expr + '`')
-    else:
-        kparm.setExpression(target_expr, language=hou.exprLanguage.Hscript)
+    target_expr = f'chs("{PARM_PREFIX}output_path")'       
+    # set final expression
+    kparm.setExpression(target_expr, language=hou.exprLanguage.Hscript)
 
     # If the node has a prerender script parm, set it to auto-version
     prerender_parm = knode.parm("prerender")
@@ -435,10 +434,10 @@ def convert_parm(kwargs):
         knode.parm("tprerender").setExpression(f'ch("{PARM_PREFIX}autoversion")')
         knode.parm("lprerender").set("python")
         pre_python = sanitise_multiline(f"""
-hou.parm('`opfullpath(".")`/'+'{PARM_PREFIX}version_lookup').pressButton()
-v = hou.parm('`opfullpath(".")`/'+'{PARM_PREFIX}version')
-v.set(v.evalAsInt() + 1)
-    """)
+        hou.parm('`opfullpath(".")`/'+'{PARM_PREFIX}version_lookup').pressButton()
+        v = hou.parm('`opfullpath(".")`/'+'{PARM_PREFIX}version')
+        v.set(v.evalAsInt() + 1)
+        """)
         prerender_parm.set(pre_python)
 
     # Ensure version lookup is run once to set initial version
@@ -446,12 +445,20 @@ v.set(v.evalAsInt() + 1)
 
     '''
     CUSTOM LINKS BASED ON NODE TYPE
-    '''
+    '''    
+    if optype_name == "octane_rop":        
+        # Octane ROPs cannot handle expressions, so we use hscript eval
+        kparm.deleteAllKeyframes()
+        kparm.set('`' + target_expr + '`')
+        knode.parm(f'{PARM_PREFIX}extension').set("See Octane parameter")
+
+        # deep
+        knode.parm('HO_img_deepFile').set('`' + target_expr + '`' + '_deep')
+    
     ### TIME DEPENDENT DEFAULTS
     # Link time_dependent based on node type specifics
     
     td_parm = knode.parm(f"{PARM_PREFIX}time_dependent")    
-    
     # For filecache types, mirror the node's existing 'timedependent' parm
     if "filecache" in optype_name and knode.parm("timedependent") is not None:
         td_parm.set(knode.parm("timedependent"))

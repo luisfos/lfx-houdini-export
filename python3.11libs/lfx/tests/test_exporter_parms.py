@@ -69,6 +69,35 @@ def test_versionning_single() -> None:
     assert version_parm is not None
     assert version_parm.evalAsInt() == 0
 
+    lfx_parms = [parm for parm in n.parms() if parm.name().startswith(PREFIX)]
+    for parm in lfx_parms:
+        parm.pressButton()  # simulate user clicking the parm to trigger any callbacks
+
+def tmp_test_versionning_octane() -> None:
+    """
+    Checks exporter parms works on a single node so we can fail early
+    """
+    build_fresh_scene()
+
+    # only test one node
+    label = "mantra"    
+
+    ele: dict = next(op for op in OPs if op['label'] == label)
+    n = hou.node(f'/obj/{ele["context"]}/{ele["name"]}')
+    kwargs = {
+        'node': n,
+        'parms': [n.parm(ele['parm'])],
+    }    
+    
+    from lfx import exporter_callbacks
+    exporter_callbacks.convert_parm(kwargs)
+
+    version_parm = n.parm(f'{PREFIX}version')
+
+    # default version should be 0 as no version folders exist yet
+    assert version_parm is not None
+    assert version_parm.evalAsInt() == 0
+
 def test_exporter_parameters_creation() -> None:
     """
     Checks the exporter parameters create correctly and without errors
