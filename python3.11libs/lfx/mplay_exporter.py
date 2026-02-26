@@ -1228,3 +1228,7 @@ def main(kwargs):
     else:
         logger.warning(f"Unknown action: {action_id}")
 
+
+if __name__ == "__main__":
+    # main({})
+    print("hello terminal")
