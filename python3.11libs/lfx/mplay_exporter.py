@@ -295,6 +295,18 @@ try:
                 QtWidgets.QApplication(sys.argv)
             return None
 except ImportError:
+    class _HouFallback:
+        class qt:
+            @staticmethod
+            def mainWindow():
+                return None
+
+        @staticmethod
+        def getenv(key):
+            return os.getenv(key)
+
+    hou = _HouFallback()
+
     def get_main_window():
         if QtWidgets.QApplication.instance() is None:
             QtWidgets.QApplication(sys.argv)
@@ -1230,5 +1242,9 @@ def main(kwargs):
 
 
 if __name__ == "__main__":
-    # main({})
-    print("hello terminal")
+    kwargs = {"toolname": "Save..."}
+    main(kwargs)
+    app = QtWidgets.QApplication.instance()
+    if app is None:
+        app = QtWidgets.QApplication(sys.argv)
+    sys.exit(app.exec())
