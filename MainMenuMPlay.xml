@@ -13,6 +13,11 @@
                 <label>Save...</label>
                 <scriptCode scriptType="python"><![CDATA[from lfx import mplay_exporter; mplay_exporter.main(kwargs)]]></scriptCode>
             </scriptItem>
+            <scriptItem id="prismsave">
+                <actionId>Prism Save...</actionId>
+                <label>Prism Save...</label>
+                <scriptCode scriptType="python"><![CDATA[from lfx import mplay_prism_exporter; mplay_prism_exporter.main(kwargs)]]></scriptCode>
+            </scriptItem>
             <scriptItem id="debug">
                 <label>Debug</label>
                 <scriptCode scriptType="python"><![CDATA[from lfx import mplay_exporter; mplay_exporter.main(kwargs)]]></scriptCode>
@@ -20,7 +25,7 @@
             <separatorItem />
             <scriptItem id="reload">
                 <label>Reload</label>
-                <scriptCode scriptType="python"><![CDATA[from importlib import reload; import lfx.mplay_exporter as mplay_exporter; reload(mplay_exporter); mplay_exporter.main(kwargs)]]></scriptCode>
+                <scriptCode scriptType="python"><![CDATA[from importlib import reload; import lfx.mplay_exporter as mplay_exporter; import lfx.mplay_prism_exporter as mplay_prism_exporter; reload(mplay_exporter); reload(mplay_prism_exporter); mplay_exporter.main(kwargs)]]></scriptCode>
             </scriptItem>
         </subMenu>
     </menuBar>

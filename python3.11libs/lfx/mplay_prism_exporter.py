@@ -14,6 +14,11 @@ except Exception:
         except Exception:
             return False
 
+try:
+    from .mplay_exporter import SaveInterface as _SharedSaveInterface
+except Exception:
+    from mplay_exporter import SaveInterface as _SharedSaveInterface
+
 # --- Logging Setup ---
 def setup_logger():
     logger = logging.getLogger(__name__)
@@ -321,7 +326,7 @@ class SaveInterface(QtWidgets.QDialog):
         self.setWindowFlags(QtCore.Qt.FramelessWindowHint | QtCore.Qt.WindowStaysOnTopHint)
         self.setAttribute(QtCore.Qt.WA_TranslucentBackground)
         
-        self.setWindowTitle("MPlay Save")
+        self.setWindowTitle("MPlay Prism Save")
         # Fixed dialog width; height grows downward as needed
         self.setMinimumWidth(450)
         # self.setFixedWidth(550)
@@ -366,7 +371,7 @@ class SaveInterface(QtWidgets.QDialog):
         title_layout = QtWidgets.QHBoxLayout(self.title_bar)
         title_layout.setContentsMargins(10, 0, 0, 0)
 
-        title_label = QtWidgets.QLabel("MPLAY SAVE")
+        title_label = QtWidgets.QLabel("MPLAY PRISM SAVE")
         title_label.setObjectName("TitleLabel")
 
         close_button = QtWidgets.QPushButton("X")
@@ -1263,6 +1268,15 @@ class SaveInterface(QtWidgets.QDialog):
 
     def mouseReleaseEvent(self, event):
         self.old_pos = None
+
+
+SaveInterface.attach_logger_to_console = _SharedSaveInterface.attach_logger_to_console
+SaveInterface._default_ffmpeg_codec_args = _SharedSaveInterface._default_ffmpeg_codec_args
+SaveInterface._on_video_codec_changed = _SharedSaveInterface._on_video_codec_changed
+SaveInterface._reset_ffmpeg_args_to_default = _SharedSaveInterface._reset_ffmpeg_args_to_default
+SaveInterface._build_sequence_glob_and_output = _SharedSaveInterface._build_sequence_glob_and_output
+SaveInterface.run_ffmpeg_encode = _SharedSaveInterface.run_ffmpeg_encode
+SaveInterface._delete_sequence_files = _SharedSaveInterface._delete_sequence_files
 
 
 def main(kwargs):
