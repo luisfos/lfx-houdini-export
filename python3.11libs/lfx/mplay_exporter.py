@@ -308,12 +308,12 @@ except ImportError:
     hou = _HouFallback()
 
     def get_main_window():
-        if QtWidgets.QApplication.instance() is None:
-            QtWidgets.QApplication(sys.argv)
         return None
 
 class SaveInterface(QtWidgets.QDialog):
-    def __init__(self, parent=get_main_window()):
+    def __init__(self, parent=None):
+        if parent is None:
+            parent = get_main_window()
         super(SaveInterface, self).__init__(parent)
         
         # Make window frameless and stay on top of MPlay
@@ -456,16 +456,34 @@ class SaveInterface(QtWidgets.QDialog):
         # Removed ProRes; all codecs use MP4 containers
         self.video_codec_combobox.addItems(["AV1", "H.264", "H.265"])
         self.video_codec_combobox.setSizePolicy(QtWidgets.QSizePolicy.MinimumExpanding, QtWidgets.QSizePolicy.Fixed)
+        self._ffmpeg_default_args_text = ""
+        self.video_codec_combobox.currentTextChanged.connect(self._on_video_codec_changed)
         # New: keep image sequence toggle (default true)
         self.keep_sequence_checkbox = QtWidgets.QCheckBox("KEEP IMAGE SEQUENCE")
         self.keep_sequence_checkbox.setChecked(False)
+
+        self.ffmpeg_args_label = QtWidgets.QLabel("FFMPEG ARGS")
+        self.ffmpeg_args_lineedit = QtWidgets.QLineEdit()
+        self.ffmpeg_args_lineedit.setPlaceholderText("FFmpeg codec/filter args")
+        self.ffmpeg_args_reset_button = QtWidgets.QPushButton("Reset")
+        self.ffmpeg_args_reset_button.clicked.connect(self._reset_ffmpeg_args_to_default)
+
         ev_layout.addWidget(self.video_codec_label)
         ev_layout.addWidget(self.video_codec_combobox)
         ev_layout.addWidget(self.keep_sequence_checkbox)
         ev_layout.addStretch()
+
+        ev_args_layout = QtWidgets.QHBoxLayout()
+        ev_args_layout.setContentsMargins(10, 0, 0, 0)
+        ev_args_layout.addWidget(self.ffmpeg_args_label)
+        ev_args_layout.addWidget(self.ffmpeg_args_lineedit)
+        ev_args_layout.addWidget(self.ffmpeg_args_reset_button)
+
         ev_group_layout = QtWidgets.QVBoxLayout(self.export_video_group)
         ev_group_layout.setContentsMargins(10, 6, 10, 6)
         ev_group_layout.addWidget(self.export_video_content)
+        ev_group_layout.addLayout(ev_args_layout)
+        self._reset_ffmpeg_args_to_default()
 
         # Export button
         self.export_button = QtWidgets.QPushButton("EXPORT")
@@ -496,10 +514,10 @@ class SaveInterface(QtWidgets.QDialog):
         self.open_in_button.setText("Open in..")
         self.open_in_button.setPopupMode(QtWidgets.QToolButton.InstantPopup)
         open_menu = QtWidgets.QMenu(self.open_in_button)
-        self.menu_open_explorer = open_menu.addAction("Open Folder")
+        self.menu_open_folder = open_menu.addAction("Open Folder")
         self.menu_open_prism = open_menu.addAction("Open in Prism")
         self.open_in_button.setMenu(open_menu)
-        self.menu_open_explorer.triggered.connect(self.open_in_explorer)
+        self.menu_open_folder.triggered.connect(self.open_folder)
         self.menu_open_prism.triggered.connect(self.open_in_prism)
 
     def create_layouts(self):
@@ -698,6 +716,8 @@ class SaveInterface(QtWidgets.QDialog):
         is_enabled = self.export_video_group.isChecked()
         self.export_video_content.setVisible(is_enabled)
         self.video_codec_combobox.setEnabled(is_enabled)
+        self.ffmpeg_args_lineedit.setEnabled(is_enabled)
+        self.ffmpeg_args_reset_button.setEnabled(is_enabled)
 
         
         self.generate_playblast_path()
@@ -946,7 +966,7 @@ class SaveInterface(QtWidgets.QDialog):
                 self.identifier_combo.setEditText(current_text)
             self.identifier_combo.blockSignals(False)
 
-    def open_in_explorer(self):
+    def open_folder(self):
         """Open folder like Prism's callback: try up to 3 parent levels."""
         try:
             import os
@@ -955,7 +975,8 @@ class SaveInterface(QtWidgets.QDialog):
 
             if not path:
                 return
-            folder_path = os.path.dirname(path)
+            current_folder = os.path.dirname(path)
+            folder_path = os.path.dirname(current_folder)
             original = folder_path
             for _ in range(4):
                 if os.path.exists(folder_path):
@@ -971,8 +992,74 @@ class SaveInterface(QtWidgets.QDialog):
             except Exception:
                 logger.warning(f"Folder does not exist: {original}")
         except Exception:
-            logger.exception("Failed to open folder in explorer.")
+            logger.exception("Failed to open folder.")
             pass
+
+    def _default_ffmpeg_codec_args(self, codec: str) -> list[str]:
+        if "AV1" in codec:
+            return [
+                "-c:v",
+                "av1_nvenc",
+                "-preset",
+                "p3",
+                "-cq",
+                "24",
+                "-pix_fmt",
+                "yuv420p10le",
+                "-vf",
+                "crop=iw-mod(iw\\,2):ih-mod(ih\\,2)",
+            ]
+        if "H.264" in codec:
+            return [
+                "-c:v",
+                "h264_nvenc",
+                "-preset",
+                "p4",
+                "-cq",
+                "22",
+                "-pix_fmt",
+                "yuv444p",
+                "-vf",
+                "crop=iw-mod(iw\\,2):ih-mod(ih\\,2)",
+            ]
+        if "H.265" in codec:
+            return [
+                "-c:v",
+                "hevc_nvenc",
+                "-preset",
+                "p4",
+                "-cq",
+                "24",
+                "-pix_fmt",
+                "yuv444p",
+                "-vf",
+                "crop=iw-mod(iw\\,2):ih-mod(ih\\,2)",
+            ]
+        return [
+            "-c:v",
+            "libx264",
+            "-preset",
+            "medium",
+            "-crf",
+            "20",
+            "-pix_fmt",
+            "yuv420p",
+            "-vf",
+            "crop=iw-mod(iw\\,2):ih-mod(ih\\,2)",
+        ]
+
+    def _on_video_codec_changed(self):
+        old_default = self._ffmpeg_default_args_text
+        current_value = self.ffmpeg_args_lineedit.text().strip()
+        if not current_value or current_value == old_default:
+            self._reset_ffmpeg_args_to_default()
+
+    def _reset_ffmpeg_args_to_default(self):
+        codec = self.video_codec_combobox.currentText()
+        default_args = self._default_ffmpeg_codec_args(codec)
+        default_text = " ".join(default_args)
+        self._ffmpeg_default_args_text = default_text
+        self.ffmpeg_args_lineedit.setText(default_text)
 
     def open_in_prism(self):
         # Placeholder: integrate with Prism to open path
@@ -1011,33 +1098,22 @@ class SaveInterface(QtWidgets.QDialog):
         input_glob = expanded
 
         codec = self.video_codec_combobox.currentText()
-        # Determine container, ffmpeg codec flags, and high-fidelity pixel format to reduce chroma fringing
+        # Determine container
         if "AV1" in codec:
             container = "mp4"
-            # Use NVIDIA NVENC for AV1; NVENC-friendly quality flag + 4:4:4 chroma
-            codec_args = [
-                "-c:v",
-                "av1_nvenc",
-                "-preset",
-                "p3",
-                "-cq",
-                "24",
-                "-pix_fmt",
-                "yuv420p10le",
-            ]
         elif "H.264" in codec:
             container = "mp4"
-            # Use NVIDIA NVENC for H.264 with 4:4:4 chroma
-            codec_args = ["-c:v", "h264_nvenc", "-preset", "p4", "-cq", "22", "-pix_fmt", "yuv444p"]
         elif "H.265" in codec:
             container = "mp4"
-            # Use NVIDIA NVENC for H.265 with 4:4:4 chroma
-            codec_args = ["-c:v", "hevc_nvenc", "-preset", "p4", "-cq", "24", "-pix_fmt", "yuv444p"]
         # ProRes removed
         else:
             container = "mp4"
-            # Fallback libx264; keep 4:2:0 for compatibility
-            codec_args = ["-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p"]
+
+        custom_args_text = self.ffmpeg_args_lineedit.text().strip()
+        if custom_args_text:
+            codec_args = custom_args_text.split()
+        else:
+            codec_args = self._default_ffmpeg_codec_args(codec)
 
         # Output path: same directory as sequence, with video container
         out_dir = os.path.dirname(expanded)
@@ -1046,9 +1122,6 @@ class SaveInterface(QtWidgets.QDialog):
         if "%04d" in base_name:
             base_name = base_name.replace("%04d", "").rstrip("._")
         output_video = os.path.join(out_dir, f"{base_name}.{container}")
-        # Enforce even resolution across all codecs to avoid encoder artifacts
-        # Escape commas for Windows shell when passing through QProcess
-        codec_args += ["-vf", "crop=iw-mod(iw\\,2):ih-mod(ih\\,2)"]
         return input_glob, output_video, container, codec_args
 
     def run_ffmpeg_encode(self):
@@ -1083,7 +1156,19 @@ class SaveInterface(QtWidgets.QDialog):
         # Build arguments for QProcess using scene FPS
         # Build args; codec_args already includes appropriate -pix_fmt
         fps = int(hou.fps())
-        args = ["-y", "-framerate", str(fps), "-i", input_glob] + codec_args
+        start_frame = 1
+        try:
+            fr_out, _ = hou.hscript("frange")
+            parts = fr_out.strip().replace("Frame range:", "").split("to")
+            if len(parts) == 2:
+                start_frame = int(parts[0].strip())
+        except Exception:
+            start_frame = 1
+
+        args = ["-y", "-framerate", str(fps)]
+        if start_frame != 1:
+            args += ["-start_number", str(start_frame)]
+        args += ["-i", input_glob] + codec_args
         args += [output_video]
 
         # Show progress bar indeterminate during encode
@@ -1228,8 +1313,8 @@ def main(kwargs):
 
         print(hou.getenv("FPS")) # wrong
         print(hou.fps()) # good
-        print(hou.playbar.playbackRange())
-        print(hou.playbar.selectionRange())
+        # print(hou.playbar.playbackRange())
+        # print(hou.playbar.selectionRange())
         print(hou.hscript("frange"))
         print(hou.hscript("echo $RFSTART"))
 
@@ -1242,9 +1327,20 @@ def main(kwargs):
 
 
 if __name__ == "__main__":
-    kwargs = {"toolname": "Save..."}
-    main(kwargs)
+    os.environ.setdefault("QT_AUTO_SCREEN_SCALE_FACTOR", "0")
+    os.environ.setdefault("QT_SCALE_FACTOR", "1")
+
+    try:
+        QtGui.QGuiApplication.setHighDpiScaleFactorRoundingPolicy(
+            QtCore.Qt.HighDpiScaleFactorRoundingPolicy.RoundPreferFloor
+        )
+    except Exception:
+        pass
+
     app = QtWidgets.QApplication.instance()
     if app is None:
         app = QtWidgets.QApplication(sys.argv)
+
+    kwargs = {"toolname": "Save..."}
+    main(kwargs)
     sys.exit(app.exec())
