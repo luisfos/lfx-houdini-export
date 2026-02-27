@@ -103,6 +103,7 @@ def write_version_info(filepath: str, comment: str):
 
 # --- Global variable to hold dialog reference ---
 dialog_instance = None
+USE_CUSTOM_STYLESHEET = False
 
 # --- Stylesheet ---
 STYLESHEET = """
@@ -316,19 +317,21 @@ class SaveInterface(QtWidgets.QDialog):
             parent = get_main_window()
         super(SaveInterface, self).__init__(parent)
         
-        # Make window frameless and stay on top of MPlay
-        # Using WindowStaysOnTopHint to ensure it stays above MPlay
-        self.setWindowFlags(QtCore.Qt.FramelessWindowHint | QtCore.Qt.WindowStaysOnTopHint)
-        self.setAttribute(QtCore.Qt.WA_TranslucentBackground)
+        # Use native title bar with only Close button (no Min/Max), keep resizable frame.
+        self.setWindowFlags(
+            QtCore.Qt.Window
+            | QtCore.Qt.CustomizeWindowHint
+            | QtCore.Qt.WindowTitleHint
+            | QtCore.Qt.WindowCloseButtonHint
+            | QtCore.Qt.WindowStaysOnTopHint
+        )
         
         self.setWindowTitle("MPlay Save")
         # Fixed dialog width; height grows downward as needed
         self.setMinimumWidth(450)
         # self.setFixedWidth(550)
-        
-        # For moving the frameless window
         self.old_pos = None
-
+        
         # Main container widget for styling
         self.container = QtWidgets.QWidget()
         self.container.setObjectName("MainContainer") # Set object name for styling
@@ -339,9 +342,9 @@ class SaveInterface(QtWidgets.QDialog):
         buffer.open(QtCore.QIODevice.WriteOnly)
         arrow_pixmap.save(buffer, "PNG")
         base64_data = buffer.data().toBase64().data().decode()
-        self.setStyleSheet(STYLESHEET.replace("v_arrow.png", f"data:image/png;base64,{base64_data}"))
+        if USE_CUSTOM_STYLESHEET:
+            self.setStyleSheet(STYLESHEET.replace("v_arrow.png", f"data:image/png;base64,{base64_data}"))
         
-        self.create_custom_title_bar()
         self.create_widgets()
         self.create_layouts()
         self.update_widget_states() # Set initial state
@@ -350,7 +353,6 @@ class SaveInterface(QtWidgets.QDialog):
         main_layout = QtWidgets.QVBoxLayout(self.container)
         main_layout.setContentsMargins(2, 2, 2, 2)
         main_layout.setSpacing(10)
-        main_layout.addWidget(self.title_bar)
         # Insert content directly; allow layout to grow but not shrink above minimum
         main_layout.addLayout(self.content_layout)
         main_layout.setSizeConstraint(QtWidgets.QLayout.SetMinAndMaxSize)
@@ -398,23 +400,23 @@ class SaveInterface(QtWidgets.QDialog):
         self.title_bar.mouseReleaseEvent = _tb_mouse_release
 
     def create_widgets(self):
-        self.filepath_type_label = QtWidgets.QLabel("PATH TYPE")
+        self.filepath_type_label = QtWidgets.QLabel("Path Type")
         self.filepath_type_combo = QtWidgets.QComboBox()
         self.filepath_type_combo.addItems(["Constructed", "Explicit"])
         self.filepath_type_combo.currentTextChanged.connect(self.update_widget_states)
 
-        self.base_folder_label = QtWidgets.QLabel("BASE FOLDER")
+        self.base_folder_label = QtWidgets.QLabel("Base Folder")
         self.base_folder_edit = QtWidgets.QLineEdit("$HIP/flip")
         self.base_folder_edit.textChanged.connect(self.update_widget_states)
 
-        self.output_path_label = QtWidgets.QLabel("OUTPUT PATH")
+        self.output_path_label = QtWidgets.QLabel("Output Path")
         self.output_path_edit = QtWidgets.QLineEdit()
         self.output_path_edit.setPlaceholderText("Full output path (optionally without extension)")
         self.output_path_edit.textChanged.connect(self.update_widget_states)
         self.output_path_browse_button = QtWidgets.QPushButton("Browse...")
         self.output_path_browse_button.clicked.connect(self.browse_output_path)
 
-        self.identifier_label = QtWidgets.QLabel("IDENTIFIER")        
+        self.identifier_label = QtWidgets.QLabel("Identifier")        
 
         self.identifier_combo = QtWidgets.QComboBox()                
         self.identifier_combo.setEditable(True)
@@ -424,17 +426,20 @@ class SaveInterface(QtWidgets.QDialog):
         self.identifier_combo.addItems(get_existing_identifiers_for_mplay())                              
         self.identifier_combo.editTextChanged.connect(self.update_widget_states)
 
-        self.auto_version_checkbox = QtWidgets.QCheckBox("AUTO VERSION")
+        self.auto_version_checkbox = QtWidgets.QCheckBox("Auto Version")
         self.auto_version_checkbox.setChecked(True)
         self.auto_version_checkbox.stateChanged.connect(self.update_widget_states)
-        self.version_label = QtWidgets.QLabel("VERSION:")
+        self.version_label = QtWidgets.QLabel("Version")
         self.version_spinbox = QtWidgets.QSpinBox()
         self.version_spinbox.setValue(1)
+        self.version_spinbox.lineEdit().setTextMargins(8, 0, 4, 0)
         self.version_spinbox.setMinimum(1)
+        self.version_spinbox.setMinimumWidth(54)
+        self.version_spinbox.setMinimumHeight(28)
         # Update preview when version changes
         self.version_spinbox.valueChanged.connect(self.update_widget_states)
 
-        self.format_label = QtWidgets.QLabel("FORMAT")
+        self.format_label = QtWidgets.QLabel("Format")
         self.format_combobox = QtWidgets.QComboBox()
         self.format_combobox.addItems(["JPG", "EXR", "PNG"])
         self.format_combobox.setSizePolicy(QtWidgets.QSizePolicy.MinimumExpanding, QtWidgets.QSizePolicy.Fixed)
@@ -442,13 +447,13 @@ class SaveInterface(QtWidgets.QDialog):
         self.format_combobox.currentTextChanged.connect(self.update_widget_states)
 
 
-        self.preview_path_label = QtWidgets.QLabel("PREVIEW PATH")
-        self.preview_path_value = QtWidgets.QLabel("Undefined")
-        self.preview_path_value.setStyleSheet("text-transform: none; font-weight: normal; color: #c0c0c0;")
-        self.preview_path_value.setWordWrap(True)
+        self.preview_path_label = QtWidgets.QLabel("Preview Path")
+        self.preview_path_value = QtWidgets.QLineEdit("Undefined")
+        self.preview_path_value.setReadOnly(True)
+        self.preview_path_value.setStyleSheet("font-weight: normal; color: #c0c0c0;")
 
         # Export Video section as a checkable folder/group
-        self.export_video_group = QtWidgets.QGroupBox("EXPORT VIDEO")
+        self.export_video_group = QtWidgets.QGroupBox("Export Video")
         self.export_video_group.setCheckable(True)
         self.export_video_group.setFlat(True)
         self.export_video_group.setChecked(True)
@@ -457,21 +462,25 @@ class SaveInterface(QtWidgets.QDialog):
         self.export_video_content = QtWidgets.QWidget()
         ev_layout = QtWidgets.QHBoxLayout(self.export_video_content)
         ev_layout.setContentsMargins(10, 0, 0, 0)
-        self.video_codec_label = QtWidgets.QLabel("VIDEO CODEC")
+        self.video_codec_label = QtWidgets.QLabel("Video Codec")
         self.video_codec_combobox = QtWidgets.QComboBox()
         # Removed ProRes; all codecs use MP4 containers
-        self.video_codec_combobox.addItems(["AV1", "H.264", "H.265"])
+        self.video_codec_combobox.addItems(["H264", "AV1", "H265"])
         self.video_codec_combobox.setSizePolicy(QtWidgets.QSizePolicy.MinimumExpanding, QtWidgets.QSizePolicy.Fixed)
         self._ffmpeg_default_args_text = ""
         self.video_codec_combobox.currentTextChanged.connect(self._on_video_codec_changed)
         # New: keep image sequence toggle (default true)
-        self.keep_sequence_checkbox = QtWidgets.QCheckBox("KEEP IMAGE SEQUENCE")
+        self.keep_sequence_checkbox = QtWidgets.QCheckBox("Keep Image Sequence")
         self.keep_sequence_checkbox.setChecked(False)
 
-        self.ffmpeg_args_label = QtWidgets.QLabel("FFMPEG ARGS")
+        self.ffmpeg_args_label = QtWidgets.QLabel("FFmpeg Args")
         self.ffmpeg_args_lineedit = QtWidgets.QLineEdit()
         self.ffmpeg_args_lineedit.setPlaceholderText("FFmpeg codec/filter args")
         self.ffmpeg_args_reset_button = QtWidgets.QPushButton("Reset")
+        self.ffmpeg_args_reset_button.setMinimumHeight(24)
+        self.ffmpeg_args_reset_button.setMaximumHeight(24)
+        self.ffmpeg_args_reset_button.setMaximumWidth(54)
+        self.ffmpeg_args_reset_button.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
         self.ffmpeg_args_reset_button.clicked.connect(self._reset_ffmpeg_args_to_default)
 
         ev_layout.addWidget(self.video_codec_label)
@@ -479,7 +488,8 @@ class SaveInterface(QtWidgets.QDialog):
         ev_layout.addWidget(self.keep_sequence_checkbox)
         ev_layout.addStretch()
 
-        ev_args_layout = QtWidgets.QHBoxLayout()
+        self.export_video_args_content = QtWidgets.QWidget()
+        ev_args_layout = QtWidgets.QHBoxLayout(self.export_video_args_content)
         ev_args_layout.setContentsMargins(10, 0, 0, 0)
         ev_args_layout.addWidget(self.ffmpeg_args_label)
         ev_args_layout.addWidget(self.ffmpeg_args_lineedit)
@@ -488,12 +498,24 @@ class SaveInterface(QtWidgets.QDialog):
         ev_group_layout = QtWidgets.QVBoxLayout(self.export_video_group)
         ev_group_layout.setContentsMargins(10, 6, 10, 6)
         ev_group_layout.addWidget(self.export_video_content)
-        ev_group_layout.addLayout(ev_args_layout)
+        ev_group_layout.addWidget(self.export_video_args_content)
         self._reset_ffmpeg_args_to_default()
+
+        for combo in (self.filepath_type_combo, self.format_combobox, self.video_codec_combobox, self.identifier_combo):
+            self._set_combobox_min_width(combo)
+        # Keep short combos from stretching too wide in the form layout.
+        self.format_combobox.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
+        self.video_codec_combobox.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
+        self.format_combobox.setMaximumWidth(self.format_combobox.minimumWidth() + 20)
+        self.video_codec_combobox.setMaximumWidth(self.video_codec_combobox.minimumWidth() + 20)
 
         # Export button
         self.export_button = QtWidgets.QPushButton("EXPORT")
         self.export_button.setObjectName("ExportButton")
+        export_font = self.export_button.font()        
+        export_font.setBold(True)
+        self.export_button.setFont(export_font)
+        self.export_button.setStyleSheet("color: #FE9532;")
         self.export_button.clicked.connect(self.on_export_clicked)
         
         # Progress bar below export button
@@ -510,7 +532,7 @@ class SaveInterface(QtWidgets.QDialog):
         # Use a readable monospace font for console
         try:
             mono = QtGui.QFont("Consolas")
-            mono.setPointSize(10)
+            mono.setPointSize(8)
             self.console_output.setFont(mono)
         except Exception:
             pass
@@ -573,6 +595,35 @@ class SaveInterface(QtWidgets.QDialog):
         # Attach logger handler now that console exists
         self.attach_logger_to_console()
 
+    def _set_combobox_min_width(self, combobox: QtWidgets.QComboBox):
+        fm = combobox.fontMetrics()
+        style = combobox.style()
+        max_text_width = 0
+        for i in range(combobox.count()):
+            max_text_width = max(max_text_width, fm.horizontalAdvance(combobox.itemText(i)))
+        if combobox.isEditable():
+            max_text_width = max(max_text_width, fm.horizontalAdvance(combobox.currentText() or combobox.placeholderText() or ""))
+        # Extra padding equivalent to 2 characters to prevent style/theme clipping.
+        max_text_width += fm.horizontalAdvance("00")
+        frame = style.pixelMetric(QtWidgets.QStyle.PM_DefaultFrameWidth, None, combobox)
+        arrow = style.pixelMetric(QtWidgets.QStyle.PM_ScrollBarExtent, None, combobox)
+        combobox.setMinimumWidth(max_text_width + (frame * 2) + arrow + 20)
+
+    def _expand_hip_token(self, path: str) -> str:
+        """Expand $HIP using hou.getenv instead of hou.text.expandString (MPlay bug workaround)."""
+        path = path or ""
+        try:
+            hip_value = hou.getenv("HIP") or ""
+        except Exception:
+            hip_value = os.getenv("HIP", "")
+        if not hip_value:
+            return path
+        return path.replace("${HIP}", hip_value).replace("$HIP", hip_value)
+
+    def _to_preview_path(self, path: str) -> str:
+        """Path text for preview: expand $HIP only and keep frame token unexpanded."""
+        return self._expand_hip_token(path).replace("\\", "/")
+
     def on_export_clicked(self):
         """Handle Export: save image sequence via hscript and log output.
         Step 1: Run `imgsave -a` with the preview path.
@@ -615,10 +666,10 @@ class SaveInterface(QtWidgets.QDialog):
                 end_frame = int(parts[1].strip())
             # Build a glob to check for existing files
             first_frame = start_frame if start_frame is not None else 1
-            # Expand $PRISM_JOB and frame token
-            check_first = hou.text.expandString(output_path.replace("$F4", f"{first_frame:04d}"))
+            # Expand env vars safely ($HIP via hou.getenv) while preserving expected frame replacement
+            check_first = os.path.expandvars(self._expand_hip_token(output_path.replace("$F4", f"{first_frame:04d}")))
             # Also check any frame pattern
-            check_glob = hou.text.expandString(output_path.replace("$F4", "*").replace("$PRISM_JOB", os.getenv("PRISM_JOB", "")))
+            check_glob = os.path.expandvars(self._expand_hip_token(output_path.replace("$F4", "*").replace("$PRISM_JOB", os.getenv("PRISM_JOB", ""))))
             if os.path.exists(check_first):
                 logger.error(f"Export aborted: target frame exists: {check_first}")
                 # UI restore
@@ -647,8 +698,8 @@ class SaveInterface(QtWidgets.QDialog):
             logger.warning("Could not pre-check for existing frames; proceeding cautiously.")
 
         # Get the path from preview and escape $F for hscript
-        escaped_path = output_path.replace("$F", "\\$F")
-        escaped_path = output_path.replace("$F", "\\$F")
+        resolved_output_path = os.path.expandvars(self._expand_hip_token(output_path)).replace("\\", "/")
+        escaped_path = resolved_output_path.replace("$F", "\\$F")
 
         logger.info(f"Running imgsave for sequence: {escaped_path}")
         # Execute hscript and capture output
@@ -678,7 +729,7 @@ class SaveInterface(QtWidgets.QDialog):
 
             # Step 1.5: Write versioninfo.json next to first frame
             logger.info("Writing versioninfo.json...")
-            write_version_info(filepath=hou.text.expandString(output_path), comment="")
+            write_version_info(filepath=os.path.expandvars(self._expand_hip_token(output_path)), comment="")
             logger.info("versioninfo.json written.")
             # Step 2: If Export Video is enabled, encode sequence to a video
             try:
@@ -727,7 +778,9 @@ class SaveInterface(QtWidgets.QDialog):
         # Toggle video settings visibility based on group toggle
         is_enabled = self.export_video_group.isChecked()
         self.export_video_content.setVisible(is_enabled)
+        self.export_video_args_content.setVisible(is_enabled)
         self.video_codec_combobox.setEnabled(is_enabled)
+        self.keep_sequence_checkbox.setEnabled(is_enabled)
         self.ffmpeg_args_lineedit.setEnabled(is_enabled)
         self.ffmpeg_args_reset_button.setEnabled(is_enabled)
 
@@ -748,21 +801,6 @@ class SaveInterface(QtWidgets.QDialog):
 
     def showEvent(self, event):
         super().showEvent(event)
-        # Fix window size to accommodate the largest state (export section open)
-        prev = self.export_video_group.isChecked()
-        # Force open to compute the maximum required size
-        self.export_video_group.blockSignals(True)
-        self.export_video_group.setChecked(True)
-        self.export_video_content.setVisible(True)
-        QtWidgets.QApplication.processEvents()
-        self.adjustSize()
-        # Anchor width; set only minimum height to the largest required so opening sections expands downward
-        self.setMinimumHeight(self.size().height())
-        # Restore previous checked state without resizing window
-        self.export_video_group.setChecked(prev)
-        self.export_video_content.setVisible(prev)
-        self.export_video_group.blockSignals(False)
-        # Ensure logger handler is attached on show
         self.attach_logger_to_console()
 
     def attach_logger_to_console(self):
@@ -859,7 +897,7 @@ class SaveInterface(QtWidgets.QDialog):
         """Generates and displays the playblast output path based on Prism env vars."""
         try:
             full_path, _ = self._build_playblast_path()
-            self.preview_path_value.setText(full_path)
+            self.preview_path_value.setText(self._to_preview_path(full_path))
         except Exception as e:
             self.preview_path_value.setText(str(e))
 
@@ -867,6 +905,8 @@ class SaveInterface(QtWidgets.QDialog):
         """Construct the canonical playblast output path for normal exporter.
         Returns (full_path, shasset_path). Raises on invalid context.
         """
+        import re
+
         extension = (self.format_combobox.currentText() or "jpg").lower()
         frame_token = "$F4"
         is_explicit = self.filepath_type_combo.currentText().lower() == "explicit"
@@ -876,15 +916,26 @@ class SaveInterface(QtWidgets.QDialog):
             if not explicit_path:
                 raise RuntimeError("Output path is empty.")
 
-            lowered = explicit_path.lower()
-            if not lowered.endswith(f".{extension}"):
+            # Normalize frame token variants to our canonical token.
+            # Supported forms: $F, $F1..$F4, ####, %04d (and similar printf variants).
+            explicit_path = re.sub(r"\$F(?:[1-4])?", frame_token, explicit_path)
+            explicit_path = re.sub(r"%0?\d*d", frame_token, explicit_path, flags=re.IGNORECASE)
+            explicit_path = re.sub(r"#{1,8}", frame_token, explicit_path)
+
+            # Always enforce selected extension for explicit output.
+            explicit_root, explicit_ext = os.path.splitext(explicit_path)
+            if explicit_ext:
+                explicit_path = f"{explicit_root}.{extension}"
+            else:
                 explicit_path = f"{explicit_path}.{extension}"
-            if frame_token not in explicit_path and "%04d" not in explicit_path:
-                dot_ext = f".{extension}"
-                if explicit_path.lower().endswith(dot_ext):
-                    explicit_path = explicit_path[:-len(dot_ext)] + f".{frame_token}{dot_ext}"
-                else:
-                    explicit_path = f"{explicit_path}.{frame_token}"
+
+            # Ensure frame token exists in filename (not just somewhere in the path).
+            filename = os.path.basename(explicit_path)
+            if frame_token not in filename:
+                dirname = os.path.dirname(explicit_path)
+                stem, _ = os.path.splitext(filename)
+                normalized_name = f"{stem}.{frame_token}.{extension}"
+                explicit_path = os.path.join(dirname, normalized_name) if dirname else normalized_name
 
             return explicit_path, ""
 
@@ -906,8 +957,7 @@ class SaveInterface(QtWidgets.QDialog):
 
         base = (self.base_folder_edit.text().strip() or "$HIP/flip").rstrip("/\\")
         try:
-            import hou
-            base = hou.text.expandString(base)
+            base = os.path.expandvars(self._expand_hip_token(base))
         except Exception:
             base = os.path.expandvars(base)
 
@@ -956,7 +1006,7 @@ class SaveInterface(QtWidgets.QDialog):
             import os
             import hou
             folder_path = (self.base_folder_edit.text() or "").strip()
-            folder_path = hou.text.expandString(folder_path)
+            folder_path = os.path.expandvars(self._expand_hip_token(folder_path))
             folder_path = os.path.normpath(folder_path)
             if not folder_path:
                 logger.warning("Base folder is empty.")
@@ -984,8 +1034,7 @@ class SaveInterface(QtWidgets.QDialog):
         try:
             import os
             try:
-                import hou
-                start_dir = hou.text.expandString(self.base_folder_edit.text().strip() or "$HIP")
+                start_dir = os.path.expandvars(self._expand_hip_token(self.base_folder_edit.text().strip() or "$HIP"))
             except Exception:
                 start_dir = os.path.expandvars(self.base_folder_edit.text().strip() or os.getcwd())
 
@@ -1019,7 +1068,7 @@ class SaveInterface(QtWidgets.QDialog):
                 "-vf",
                 "crop=iw-mod(iw\\,2):ih-mod(ih\\,2)",
             ]
-        if "H.264" in codec:
+        if "H264" in codec or "H.264" in codec:
             return [
                 "-c:v",
                 "h264_nvenc",
@@ -1032,7 +1081,7 @@ class SaveInterface(QtWidgets.QDialog):
                 "-vf",
                 "crop=iw-mod(iw\\,2):ih-mod(ih\\,2)",
             ]
-        if "H.265" in codec:
+        if "H265" in codec or "H.265" in codec:
             return [
                 "-c:v",
                 "hevc_nvenc",
@@ -1102,8 +1151,8 @@ class SaveInterface(QtWidgets.QDialog):
         except Exception:
             raise RuntimeError("hou module not found")
 
-        # expanded = 
-        expanded = hou.text.expandString(self.preview_path_value.text().strip().replace("$F4", "%04d"))
+        preview_value = self.preview_path_value.text().strip().replace("\\", "/")
+        expanded = os.path.expandvars(self._expand_hip_token(preview_value)).replace("$F4", "%04d")
         # Replace frame token with printf-style pattern
         input_glob = expanded
 
@@ -1111,9 +1160,9 @@ class SaveInterface(QtWidgets.QDialog):
         # Determine container
         if "AV1" in codec:
             container = "mp4"
-        elif "H.264" in codec:
+        elif "H264" in codec or "H.264" in codec:
             container = "mp4"
-        elif "H.265" in codec:
+        elif "H265" in codec or "H.265" in codec:
             container = "mp4"
         # ProRes removed
         else:
@@ -1337,15 +1386,6 @@ def main(kwargs):
 
 
 if __name__ == "__main__":
-    os.environ.setdefault("QT_AUTO_SCREEN_SCALE_FACTOR", "0")
-    os.environ.setdefault("QT_SCALE_FACTOR", "1")
-
-    try:
-        QtGui.QGuiApplication.setHighDpiScaleFactorRoundingPolicy(
-            QtCore.Qt.HighDpiScaleFactorRoundingPolicy.RoundPreferFloor
-        )
-    except Exception:
-        pass
 
     app = QtWidgets.QApplication.instance()
     if app is None:
