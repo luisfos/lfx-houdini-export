@@ -41,6 +41,7 @@ logger = setup_logger()
 # --- Identifier discovery (copied/adapted from exporter_prism_callbacks) ---
 def get_existing_identifiers_for_mplay() -> list[str]:
     """
+    This is a prism function, will be moved to prism plugin
     Finds existing identifiers in the output directory to populate the identifier dropdown.
 
     Mirrors the logic of exporter_prism_callbacks.get_existing_identifiers but derives paths
@@ -422,9 +423,10 @@ class SaveInterface(QtWidgets.QDialog):
         self.identifier_combo = QtWidgets.QComboBox()                
         self.identifier_combo.setEditable(True)
         self.identifier_combo.setSizePolicy(QtWidgets.QSizePolicy.MinimumExpanding, QtWidgets.QSizePolicy.Fixed)
-        self.identifier_combo.setPlaceholderText("Name of Playblast")       
-        self.identifier_combo.setEditText(hou.getenv("PRISM_TASK") or "playblast")                
-        self.identifier_combo.addItems(get_existing_identifiers_for_mplay())                              
+        self.identifier_combo.setPlaceholderText("Name of Flipbook")       
+        self.identifier_combo.setEditText("flipbook")                
+        initial_base = os.path.expandvars(self._expand_hip_token(self.base_folder_edit.text().strip() or "$HIP/flip"))
+        # self.identifier_combo.addItems(get_existing_identifiers_for_mplay(initial_base))                              
         self.identifier_combo.editTextChanged.connect(self.update_widget_states)
 
         self.auto_version_checkbox = QtWidgets.QCheckBox("Auto Version")
@@ -810,7 +812,7 @@ class SaveInterface(QtWidgets.QDialog):
             # Expand env vars safely ($HIP via hou.getenv) while preserving expected frame replacement
             check_first = os.path.expandvars(self._expand_hip_token(output_path.replace("$F4", f"{first_frame:04d}")))
             # Also check any frame pattern
-            check_glob = os.path.expandvars(self._expand_hip_token(output_path.replace("$F4", "*").replace("$PRISM_JOB", os.getenv("PRISM_JOB", ""))))
+            check_glob = os.path.expandvars(self._expand_hip_token(output_path.replace("$F4", "*")))
             if os.path.exists(check_first):
                 logger.error(f"Export aborted: target frame exists: {check_first}")
                 # UI restore
@@ -869,10 +871,10 @@ class SaveInterface(QtWidgets.QDialog):
             logger.info("Image sequence save completed.")
             self._set_view_last_highlighted(True)
 
-            # Step 1.5: Write versioninfo.json next to first frame
-            logger.info("Writing versioninfo.json...")
-            write_version_info(filepath=os.path.expandvars(self._expand_hip_token(output_path)), comment="")
-            logger.info("versioninfo.json written.")
+            # Step 1.5: Write versioninfo.json next to first frame for PRISM
+            # logger.info("Writing versioninfo.json...")
+            # write_version_info(filepath=os.path.expandvars(self._expand_hip_token(output_path)), comment="")
+            # logger.info("versioninfo.json written.")
             # Step 2: If Export Video is enabled, encode sequence to a video
             try:
                 if self.export_video_group.isChecked():
@@ -924,6 +926,13 @@ class SaveInterface(QtWidgets.QDialog):
         self.keep_sequence_checkbox.setEnabled(is_enabled)
         self.ffmpeg_args_lineedit.setEnabled(is_enabled)
         self.ffmpeg_args_reset_button.setEnabled(is_enabled)
+
+        if not is_explicit:
+            try:
+                base_folder = os.path.expandvars(self._expand_hip_token((self.base_folder_edit.text().strip() or "$HIP/flip")))
+                self.populate_identifiers(base_folder)
+            except Exception:
+                pass
 
         
         self.generate_playblast_path()
@@ -1038,7 +1047,7 @@ class SaveInterface(QtWidgets.QDialog):
 
 
     def generate_playblast_path(self):
-        """Generates and displays the playblast output path based on Prism env vars."""
+        """Generates and displays the playblast output path based on parameters."""
         try:
             full_path, _ = self._build_playblast_path()
             self.preview_path_value.setText(self._to_preview_path(full_path))
@@ -1120,10 +1129,10 @@ class SaveInterface(QtWidgets.QDialog):
             return 1
         return (max(versions) + 1) if versions else 1
 
-    def populate_identifiers(self, base: str, shasset_path: str):
-        """Fill the identifier dropdown with existing folders under Playblasts."""
+    def populate_identifiers(self, base_folder: str):
+        """Fill the identifier dropdown with existing folders under the base folder."""
         import os
-        lookup_dir = f"{base}/{shasset_path}/Playblasts"
+        lookup_dir = os.path.normpath(base_folder)
         items = []
         if os.path.isdir(lookup_dir):
             try:
@@ -1273,13 +1282,12 @@ class SaveInterface(QtWidgets.QDialog):
     def open_in_prism(self):
         # Placeholder: integrate with Prism to open path
         logger.info("Open in Prism triggered")
-
-
         # --- Window Dragging Methods ---
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
         QtWidgets.QApplication.processEvents()
         QtCore.QTimer.singleShot(600, lambda: self.progress_bar.setVisible(False))
+
     def mouseMoveEvent(self, event):
         if self.old_pos is not None:
             delta = event.globalPosition().toPoint() - self.old_pos
