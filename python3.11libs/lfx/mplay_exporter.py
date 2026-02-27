@@ -122,7 +122,7 @@ STYLESHEET = """
 
 #TitleLabel {
     color: #FE9532;
-    font-size: 18px;
+    font-size: 14pt;
     font-weight: bold;
     padding: 5px;
 }
@@ -131,7 +131,7 @@ STYLESHEET = """
     background-color: transparent;
     color: #FE9532;
     border: none;
-    font-size: 20px;
+    font-size: 15pt;
     font-weight: bold;
     padding: 0px 10px;
 }
@@ -143,7 +143,7 @@ STYLESHEET = """
 /* Labels */
 QLabel {
     color: #FE9532;
-    font-size: 14px;
+    font-size: 10pt;
     font-weight: bold;
 }
 
@@ -154,7 +154,7 @@ QLineEdit, QTextEdit, QSpinBox, QComboBox {
     border: 1px solid #4a4d50;
     border-radius: 4px;
     padding: 5px;
-    font-size: 14px;
+    font-size: 10pt;
 }
 
 QLineEdit:focus, QTextEdit:focus, QSpinBox:focus, QComboBox:focus {
@@ -164,7 +164,7 @@ QLineEdit:focus, QTextEdit:focus, QSpinBox:focus, QComboBox:focus {
 /* Checkboxes */
 QCheckBox {
     color: #c0c0c0;
-    font-size: 14px;
+    font-size: 10pt;
 }
 
 QCheckBox::indicator {
@@ -248,7 +248,7 @@ QPushButton:hover {
     background-color: #1a1c1e;
     color: #FE9532;
     border: 2px solid #FE9532;
-    font-size: 18px;
+    font-size: 14pt;
     padding: 10px;
 }
 /* Hover effect specifically for Export button */
@@ -398,9 +398,21 @@ class SaveInterface(QtWidgets.QDialog):
         self.title_bar.mouseReleaseEvent = _tb_mouse_release
 
     def create_widgets(self):
-        self.context_label = QtWidgets.QLabel("CONTEXT")
-        self.context_value = QtWidgets.QLabel("ASSET - TOPHE")
-        self.context_value.setStyleSheet("text-transform: none; font-weight: normal; color: #c0c0c0;")
+        self.filepath_type_label = QtWidgets.QLabel("PATH TYPE")
+        self.filepath_type_combo = QtWidgets.QComboBox()
+        self.filepath_type_combo.addItems(["Constructed", "Explicit"])
+        self.filepath_type_combo.currentTextChanged.connect(self.update_widget_states)
+
+        self.base_folder_label = QtWidgets.QLabel("BASE FOLDER")
+        self.base_folder_edit = QtWidgets.QLineEdit("$HIP/flip")
+        self.base_folder_edit.textChanged.connect(self.update_widget_states)
+
+        self.output_path_label = QtWidgets.QLabel("OUTPUT PATH")
+        self.output_path_edit = QtWidgets.QLineEdit()
+        self.output_path_edit.setPlaceholderText("Full output path (optionally without extension)")
+        self.output_path_edit.textChanged.connect(self.update_widget_states)
+        self.output_path_browse_button = QtWidgets.QPushButton("Browse...")
+        self.output_path_browse_button.clicked.connect(self.browse_output_path)
 
         self.identifier_label = QtWidgets.QLabel("IDENTIFIER")        
 
@@ -408,7 +420,7 @@ class SaveInterface(QtWidgets.QDialog):
         self.identifier_combo.setEditable(True)
         self.identifier_combo.setSizePolicy(QtWidgets.QSizePolicy.MinimumExpanding, QtWidgets.QSizePolicy.Fixed)
         self.identifier_combo.setPlaceholderText("Name of Playblast")       
-        self.identifier_combo.setEditText(hou.getenv("PRISM_TASK") or "")                
+        self.identifier_combo.setEditText(hou.getenv("PRISM_TASK") or "playblast")                
         self.identifier_combo.addItems(get_existing_identifiers_for_mplay())                              
         self.identifier_combo.editTextChanged.connect(self.update_widget_states)
 
@@ -424,7 +436,7 @@ class SaveInterface(QtWidgets.QDialog):
 
         self.format_label = QtWidgets.QLabel("FORMAT")
         self.format_combobox = QtWidgets.QComboBox()
-        self.format_combobox.addItems(["JPG", "EXR",])
+        self.format_combobox.addItems(["JPG", "EXR", "PNG"])
         self.format_combobox.setSizePolicy(QtWidgets.QSizePolicy.MinimumExpanding, QtWidgets.QSizePolicy.Fixed)
         # Update preview when format changes
         self.format_combobox.currentTextChanged.connect(self.update_widget_states)
@@ -434,12 +446,6 @@ class SaveInterface(QtWidgets.QDialog):
         self.preview_path_value = QtWidgets.QLabel("Undefined")
         self.preview_path_value.setStyleSheet("text-transform: none; font-weight: normal; color: #c0c0c0;")
         self.preview_path_value.setWordWrap(True)
-
-        # Comment section
-        self.comment_label = QtWidgets.QLabel("COMMENT")
-        self.comment_edit = QtWidgets.QTextEdit("")
-        self.comment_edit.setPlaceholderText("Enter comment here...")
-        self.comment_edit.setFixedHeight(60)
 
         # Export Video section as a checkable folder/group
         self.export_video_group = QtWidgets.QGroupBox("EXPORT VIDEO")
@@ -509,16 +515,8 @@ class SaveInterface(QtWidgets.QDialog):
         except Exception:
             pass
 
-        # Open in.. toolbutton with dropdown
-        self.open_in_button = QtWidgets.QToolButton()
-        self.open_in_button.setText("Open in..")
-        self.open_in_button.setPopupMode(QtWidgets.QToolButton.InstantPopup)
-        open_menu = QtWidgets.QMenu(self.open_in_button)
-        self.menu_open_folder = open_menu.addAction("Open Folder")
-        self.menu_open_prism = open_menu.addAction("Open in Prism")
-        self.open_in_button.setMenu(open_menu)
-        self.menu_open_folder.triggered.connect(self.open_folder)
-        self.menu_open_prism.triggered.connect(self.open_in_prism)
+        self.open_folder_button = QtWidgets.QPushButton("Open Folder")
+        self.open_folder_button.clicked.connect(self.open_folder)
 
     def create_layouts(self):
         self.content_layout = QtWidgets.QVBoxLayout()
@@ -530,14 +528,17 @@ class SaveInterface(QtWidgets.QDialog):
         form_layout.setLabelAlignment(QtCore.Qt.AlignLeft)
         form_layout.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
 
-        # Open in.. dropdown at end of context form
-        # self.content_layout.addWidget(self.open_in_button)
-        context_layout = QtWidgets.QHBoxLayout()
-        context_layout.addWidget(self.context_value)
-        context_layout.addStretch()
-        context_layout.addWidget(self.open_in_button)
-        
-        form_layout.addRow(self.context_label, context_layout)
+        form_layout.addRow(self.filepath_type_label, self.filepath_type_combo)
+
+        base_folder_layout = QtWidgets.QHBoxLayout()
+        base_folder_layout.addWidget(self.base_folder_edit)
+        base_folder_layout.addWidget(self.open_folder_button)
+        form_layout.addRow(self.base_folder_label, base_folder_layout)
+
+        output_path_layout = QtWidgets.QHBoxLayout()
+        output_path_layout.addWidget(self.output_path_edit)
+        output_path_layout.addWidget(self.output_path_browse_button)
+        form_layout.addRow(self.output_path_label, output_path_layout)
 
         
         # Identifier row: line edit + dropdown
@@ -557,10 +558,6 @@ class SaveInterface(QtWidgets.QDialog):
 
         self.content_layout.addLayout(form_layout)
 
-
-        # Comment Layout
-        self.content_layout.addWidget(self.comment_label)
-        self.content_layout.addWidget(self.comment_edit)
 
         # Export Video as checkable group
         self.content_layout.addWidget(self.export_video_group)
@@ -681,7 +678,7 @@ class SaveInterface(QtWidgets.QDialog):
 
             # Step 1.5: Write versioninfo.json next to first frame
             logger.info("Writing versioninfo.json...")
-            write_version_info(filepath=hou.text.expandString(output_path), comment=self.comment_edit.toPlainText().strip())
+            write_version_info(filepath=hou.text.expandString(output_path), comment="")
             logger.info("versioninfo.json written.")
             # Step 2: If Export Video is enabled, encode sequence to a video
             try:
@@ -710,7 +707,22 @@ class SaveInterface(QtWidgets.QDialog):
 
     def update_widget_states(self):
         """Enable/disable widgets based on checkbox states and update paths."""
-        self.version_spinbox.setEnabled(not self.auto_version_checkbox.isChecked())
+        is_explicit = self.filepath_type_combo.currentText().lower() == "explicit"
+
+        self.base_folder_label.setVisible(not is_explicit)
+        self.base_folder_edit.setVisible(not is_explicit)
+        self.open_folder_button.setVisible(not is_explicit)
+        self.identifier_label.setVisible(not is_explicit)
+        self.identifier_combo.setVisible(not is_explicit)
+        self.version_label.setVisible(not is_explicit)
+        self.auto_version_checkbox.setVisible(not is_explicit)
+        self.version_spinbox.setVisible(not is_explicit)
+
+        self.output_path_label.setVisible(is_explicit)
+        self.output_path_edit.setVisible(is_explicit)
+        self.output_path_browse_button.setVisible(is_explicit)
+
+        self.version_spinbox.setEnabled((not self.auto_version_checkbox.isChecked()) and (not is_explicit))
 
         # Toggle video settings visibility based on group toggle
         is_enabled = self.export_video_group.isChecked()
@@ -846,89 +858,61 @@ class SaveInterface(QtWidgets.QDialog):
     def generate_playblast_path(self):
         """Generates and displays the playblast output path based on Prism env vars."""
         try:
-            full_path, shasset_path = self._build_playblast_path()
-            self.context_value.setText(shasset_path)
+            full_path, _ = self._build_playblast_path()
             self.preview_path_value.setText(full_path)
         except Exception as e:
             self.preview_path_value.setText(str(e))
 
     def _build_playblast_path(self):
-        """Construct the canonical playblast output path from Prism envs.
+        """Construct the canonical playblast output path for normal exporter.
         Returns (full_path, shasset_path). Raises on invalid context.
         """
-        try:
-            import hou  # ensure hou is present
-        except ImportError:
-            raise RuntimeError("hou module not found. Cannot generate path.")
+        extension = (self.format_combobox.currentText() or "jpg").lower()
+        frame_token = "$F4"
+        is_explicit = self.filepath_type_combo.currentText().lower() == "explicit"
 
-        prism_job = "$PRISM_JOB"
-        prism_shot = hou.getenv("PRISM_SHOT")
-        prism_asset = hou.getenv("PRISM_ASSETPATH")
-        prism_sequence = hou.getenv("PRISM_SEQUENCE")
-        prism_department = hou.getenv("PRISM_DEPARTMENT") or "dept"
-        prism_task = hou.getenv("PRISM_TASK") or "task"
+        if is_explicit:
+            explicit_path = self.output_path_edit.text().strip()
+            if not explicit_path:
+                raise RuntimeError("Output path is empty.")
 
-        if not prism_job:
-            raise RuntimeError("PRISMJOB environment variable not set.")
+            lowered = explicit_path.lower()
+            if not lowered.endswith(f".{extension}"):
+                explicit_path = f"{explicit_path}.{extension}"
+            if frame_token not in explicit_path and "%04d" not in explicit_path:
+                dot_ext = f".{extension}"
+                if explicit_path.lower().endswith(dot_ext):
+                    explicit_path = explicit_path[:-len(dot_ext)] + f".{frame_token}{dot_ext}"
+                else:
+                    explicit_path = f"{explicit_path}.{frame_token}"
 
-        base = f"{prism_job}/03_Production"
-        etype = "Playblasts"
+            return explicit_path, ""
 
-        ctype = "shot" if prism_shot else "asset"
-        cshasset = prism_shot or prism_asset
-        if not cshasset:
-            raise RuntimeError("PRISM_SHOT or PRISM_ASSET not set.")
-
-        if ctype == "shot":
-            if not prism_sequence:
-                raise RuntimeError("PRISM_SEQUENCE not set for shot context.")
-            shasset_path = f"Shots/{prism_sequence}/{cshasset}"
-        else:
-            shasset_path = f"Assets/{cshasset}"
-
-        playblast_base_path = f"{base}/{shasset_path}/{etype}/"
-
-        identifier = (self.identifier_combo.currentText().strip() or "identifier")
+        base_folder = (self.base_folder_edit.text().strip() or "$HIP/flip").rstrip("/\\")
+        identifier = (self.identifier_combo.currentText().strip() or "playblast")
         version_num = int(self.version_spinbox.value())
         version_str = f"v{version_num:04d}"
-        frame = "$F4"
-        extension = (self.format_combobox.currentText() or "jpg").lower()
 
-        filename = f"{prism_department}-{prism_task}_{identifier}_{version_str}.{frame}.{extension}"
-        full_path = f"{playblast_base_path}{identifier}/{version_str}/{filename}"
-        return full_path, shasset_path
-        # Filename pattern: department-task_identifier_version.frame.extension
-        filename = f"{prism_department}-{prism_task}_{identifier}_{version_str}.{frame}.{extension}"
-
-        full_path = f"{playblast_base_path}{identifier}/{version_str}/{filename}"
-
-        # print(full_path)
-        self.preview_path_value.setText(full_path)
+        filename = f"{identifier}_{version_str}.{frame_token}.{extension}"
+        full_path = os.path.join(base_folder, identifier, version_str, filename)
+        full_path = full_path.replace("\\", "/")
+        return full_path, base_folder
 
     def lookup_next_version(self) -> int:
-        """Scan Playblasts/identifier folder for latest v#### and return next."""
+        """Scan constructed output folder for latest v#### and return next."""
         import os, re
+        if self.filepath_type_combo.currentText().lower() == "explicit":
+            return 1
+
+        base = (self.base_folder_edit.text().strip() or "$HIP/flip").rstrip("/\\")
         try:
             import hou
+            base = hou.text.expandString(base)
         except Exception:
-            return None
-        prism_job = hou.getenv("PRISMJOB") or hou.getenv("PRISM_JOB") or "$PRISMJOB"
-        prism_shot = hou.getenv("PRISM_SHOT")
-        prism_asset = hou.getenv("PRISM_ASSETPATH")
-        prism_sequence = hou.getenv("PRISM_SEQUENCE")
-        ctype = "shot" if prism_shot else "asset"
-        cshasset = prism_shot or prism_asset
-        if not cshasset:
-            return None
-        if ctype == "shot":
-            if not prism_sequence:
-                return None
-            shasset_path = f"Shots/{prism_sequence}/{cshasset}"
-        else:
-            shasset_path = f"Assets/{cshasset}"
-        base = f"{prism_job}/03_Production"
+            base = os.path.expandvars(base)
+
         identifier = (self.identifier_combo.currentText().strip() or "identifier")
-        lookup_dir = f"{base}/{shasset_path}/Playblasts/{identifier}"
+        lookup_dir = os.path.join(base, identifier)
         if not os.path.isdir(lookup_dir):
             return 1
         versions = []
@@ -967,16 +951,16 @@ class SaveInterface(QtWidgets.QDialog):
             self.identifier_combo.blockSignals(False)
 
     def open_folder(self):
-        """Open folder like Prism's callback: try up to 3 parent levels."""
+        """Open the current base folder directory."""
         try:
             import os
             import hou
-            path = hou.text.expandString(self.preview_path_value.text()).strip()
-
-            if not path:
+            folder_path = (self.base_folder_edit.text() or "").strip()
+            folder_path = hou.text.expandString(folder_path)
+            folder_path = os.path.normpath(folder_path)
+            if not folder_path:
+                logger.warning("Base folder is empty.")
                 return
-            current_folder = os.path.dirname(path)
-            folder_path = os.path.dirname(current_folder)
             original = folder_path
             for _ in range(4):
                 if os.path.exists(folder_path):
@@ -994,6 +978,32 @@ class SaveInterface(QtWidgets.QDialog):
         except Exception:
             logger.exception("Failed to open folder.")
             pass
+
+    def browse_output_path(self):
+        """Open a file picker to select explicit output path."""
+        try:
+            import os
+            try:
+                import hou
+                start_dir = hou.text.expandString(self.base_folder_edit.text().strip() or "$HIP")
+            except Exception:
+                start_dir = os.path.expandvars(self.base_folder_edit.text().strip() or os.getcwd())
+
+            current_value = self.output_path_edit.text().strip()
+            if current_value:
+                start_dir = os.path.dirname(current_value) or start_dir
+
+            file_filter = "Images/Video (*.jpg *.jpeg *.png *.exr *.mp4 *.mov);;All Files (*)"
+            selected_path, _ = QtWidgets.QFileDialog.getSaveFileName(
+                self,
+                "Select Output Path",
+                start_dir,
+                file_filter,
+            )
+            if selected_path:
+                self.output_path_edit.setText(selected_path)
+        except Exception:
+            logger.exception("Failed to browse for output path.")
 
     def _default_ffmpeg_codec_args(self, codec: str) -> list[str]:
         if "AV1" in codec:
