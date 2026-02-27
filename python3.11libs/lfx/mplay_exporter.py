@@ -347,6 +347,7 @@ class SaveInterface(QtWidgets.QDialog):
         
         self.create_widgets()
         self.create_layouts()
+        self._apply_control_min_height(28)
         self.update_widget_states() # Set initial state
 
         # Set the main layout for the container
@@ -429,7 +430,6 @@ class SaveInterface(QtWidgets.QDialog):
         self.auto_version_checkbox = QtWidgets.QCheckBox("Auto Version")
         self.auto_version_checkbox.setChecked(True)
         self.auto_version_checkbox.stateChanged.connect(self.update_widget_states)
-        self.version_label = QtWidgets.QLabel("Version")
         self.version_spinbox = QtWidgets.QSpinBox()
         self.version_spinbox.setValue(1)
         self.version_spinbox.lineEdit().setTextMargins(8, 0, 4, 0)
@@ -461,7 +461,8 @@ class SaveInterface(QtWidgets.QDialog):
 
         self.export_video_content = QtWidgets.QWidget()
         ev_layout = QtWidgets.QHBoxLayout(self.export_video_content)
-        ev_layout.setContentsMargins(10, 0, 0, 0)
+        ev_layout.setContentsMargins(0, 0, 0, 0)
+        ev_layout.setSpacing(10)
         self.video_codec_label = QtWidgets.QLabel("Video Codec")
         self.video_codec_combobox = QtWidgets.QComboBox()
         # Removed ProRes; all codecs use MP4 containers
@@ -490,13 +491,14 @@ class SaveInterface(QtWidgets.QDialog):
 
         self.export_video_args_content = QtWidgets.QWidget()
         ev_args_layout = QtWidgets.QHBoxLayout(self.export_video_args_content)
-        ev_args_layout.setContentsMargins(10, 0, 0, 0)
+        ev_args_layout.setContentsMargins(0, 0, 0, 0)
+        ev_args_layout.setSpacing(10)
         ev_args_layout.addWidget(self.ffmpeg_args_label)
         ev_args_layout.addWidget(self.ffmpeg_args_lineedit)
         ev_args_layout.addWidget(self.ffmpeg_args_reset_button)
 
         ev_group_layout = QtWidgets.QVBoxLayout(self.export_video_group)
-        ev_group_layout.setContentsMargins(10, 6, 10, 6)
+        ev_group_layout.setContentsMargins(0, 6, 10, 6)
         ev_group_layout.addWidget(self.export_video_content)
         ev_group_layout.addWidget(self.export_video_args_content)
         self._reset_ffmpeg_args_to_default()
@@ -517,6 +519,12 @@ class SaveInterface(QtWidgets.QDialog):
         self.export_button.setFont(export_font)
         self.export_button.setStyleSheet("color: #FE9532;")
         self.export_button.clicked.connect(self.on_export_clicked)
+
+        self.view_last_version_button = QtWidgets.QPushButton("View Last Version")
+        self.view_last_version_button.setMinimumHeight(self.export_button.sizeHint().height())
+        self.view_last_version_button.clicked.connect(self.open_last_version)
+        self._view_last_highlighted = False
+        self._set_view_last_highlighted(False)
         
         # Progress bar below export button
         self.progress_bar = QtWidgets.QProgressBar()
@@ -529,6 +537,8 @@ class SaveInterface(QtWidgets.QDialog):
         self.console_output.setReadOnly(True)
         self.console_output.setMinimumHeight(100)
         self.console_output.setStyleSheet("background-color: #1a1c1e; color: #c0c0c0; border: 1px solid #4a4d50;")
+        self._apply_console_scrollbar_style()
+
         # Use a readable monospace font for console
         try:
             mono = QtGui.QFont("Consolas")
@@ -567,14 +577,13 @@ class SaveInterface(QtWidgets.QDialog):
         form_layout.addRow(self.identifier_label, self.identifier_combo)
 
         version_layout = QtWidgets.QHBoxLayout()
-        # Keep VERSION label in place, then checkbox aligned with field column, spinbox aligned right
-        # version_layout.addWidget(self.version_label)
+        # version_layout.addWidget(self.format_label)
+        version_layout.addWidget(self.format_combobox)
+        version_layout.addSpacing(12)
         version_layout.addStretch()
         version_layout.addWidget(self.auto_version_checkbox)
-        version_layout.addWidget(self.version_spinbox, alignment=QtCore.Qt.AlignRight)
-        form_layout.addRow(self.version_label, version_layout)
-
-        form_layout.addRow(self.format_label, self.format_combobox)
+        version_layout.addWidget(self.version_spinbox)
+        form_layout.addRow(self.format_label, version_layout)
         form_layout.addRow(self.preview_path_label, self.preview_path_value)
         
 
@@ -586,8 +595,10 @@ class SaveInterface(QtWidgets.QDialog):
 
         self.content_layout.addStretch()
 
-        # Export button
-        self.content_layout.addWidget(self.export_button)
+        export_buttons_layout = QtWidgets.QHBoxLayout()
+        export_buttons_layout.addWidget(self.view_last_version_button, 1)
+        export_buttons_layout.addWidget(self.export_button, 1)
+        self.content_layout.addLayout(export_buttons_layout)
         # Progress bar and console output below export button
         self.content_layout.addWidget(self.progress_bar)
         self.content_layout.addWidget(self.console_output)
@@ -608,6 +619,135 @@ class SaveInterface(QtWidgets.QDialog):
         frame = style.pixelMetric(QtWidgets.QStyle.PM_DefaultFrameWidth, None, combobox)
         arrow = style.pixelMetric(QtWidgets.QStyle.PM_ScrollBarExtent, None, combobox)
         combobox.setMinimumWidth(max_text_width + (frame * 2) + arrow + 20)
+
+    def _apply_control_min_height(self, min_height: int = 28):
+        for widget_type in (QtWidgets.QLineEdit, QtWidgets.QComboBox):
+            for widget in self.findChildren(widget_type):
+                widget.setMinimumHeight(min_height)
+                if isinstance(widget, QtWidgets.QComboBox) and widget.isEditable() and widget.lineEdit() is not None:
+                    widget.lineEdit().setMinimumHeight(min_height)
+
+    def _apply_console_scrollbar_style(self):
+        try:
+            sb = self.console_output.verticalScrollBar()
+            sb.setStyleSheet(
+                "QScrollBar:vertical { background: transparent; width: 14px; margin: 0px; }"
+                "QScrollBar::handle:vertical { background: #ff9a3d; min-height: 26px; border: 1px solid #ffc489; border-radius: 7px; }"
+                "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; width: 0px; }"
+                "QScrollBar::up-arrow:vertical, QScrollBar::down-arrow:vertical { width: 0px; height: 0px; }"
+                "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }"
+            )
+        except Exception:
+            pass
+
+    def _set_view_last_highlighted(self, highlighted: bool):
+        self._view_last_highlighted = highlighted
+        if highlighted:
+            self.view_last_version_button.setStyleSheet(
+                "QPushButton { background-color: #2d6b3a; color: #e8ffe8; border: 1px solid #3f8f51; border-radius: 4px; padding: 8px 12px; font-weight: bold; }"
+                "QPushButton:hover { background-color: #357f46; }"
+            )
+        else:
+            self.view_last_version_button.setStyleSheet("")
+
+    def _pick_last_media_file(self, folder_path: str) -> str | None:
+        import os
+        import re
+
+        if not folder_path or not os.path.isdir(folder_path):
+            return None
+
+        files = []
+        try:
+            for name in os.listdir(folder_path):
+                file_path = os.path.join(folder_path, name)
+                if os.path.isfile(file_path):
+                    files.append(file_path)
+        except OSError:
+            return None
+
+        if not files:
+            return None
+
+        video_exts = {".mp4", ".mov", ".mkv", ".avi", ".webm"}
+        image_exts = {".jpg", ".jpeg", ".png", ".exr", ".tif", ".tiff", ".bmp"}
+
+        video_files = [f for f in files if os.path.splitext(f)[1].lower() in video_exts]
+        if video_files:
+            return max(video_files, key=os.path.getmtime)
+
+        image_files = [f for f in files if os.path.splitext(f)[1].lower() in image_exts]
+        if not image_files:
+            return None
+
+        sequence_groups: dict[str, list[tuple[str, int, float]]] = {}
+        singles: list[tuple[str, float]] = []
+        for file_path in image_files:
+            base = os.path.splitext(os.path.basename(file_path))[0]
+            match = re.search(r"([._-])(\d{1,8})$", base)
+            mtime = os.path.getmtime(file_path)
+            if match:
+                group_key = base[:match.start()]
+                frame_num = int(match.group(2))
+                sequence_groups.setdefault(group_key, []).append((file_path, frame_num, mtime))
+            else:
+                singles.append((file_path, mtime))
+
+        if sequence_groups:
+            newest_group = max(
+                sequence_groups.values(),
+                key=lambda items: max(item[2] for item in items),
+            )
+            first_frame = min(newest_group, key=lambda item: item[1])
+            return first_frame[0]
+
+        if singles:
+            return max(singles, key=lambda item: item[1])[0]
+
+        return max(image_files, key=os.path.getmtime)
+
+    def open_last_version(self):
+        import os
+        import re
+
+        try:
+            self._set_view_last_highlighted(False)
+            is_explicit = self.filepath_type_combo.currentText().lower() == "explicit"
+            target_file = None
+
+            if is_explicit:
+                explicit_path, _ = self._build_playblast_path()
+                explicit_path = os.path.expandvars(self._expand_hip_token(explicit_path))
+                explicit_dir = os.path.dirname(explicit_path)
+                target_file = self._pick_last_media_file(explicit_dir)
+            else:
+                base = (self.base_folder_edit.text().strip() or "$HIP/flip").rstrip("/\\")
+                base = os.path.expandvars(self._expand_hip_token(base))
+                identifier = (self.identifier_combo.currentText().strip() or "playblast")
+                version_root = os.path.join(base, identifier)
+                version_pat = re.compile(r"^v(\d+)$", re.IGNORECASE)
+
+                version_dirs: list[tuple[int, str]] = []
+                if os.path.isdir(version_root):
+                    for name in os.listdir(version_root):
+                        match = version_pat.match(name)
+                        full_dir = os.path.join(version_root, name)
+                        if match and os.path.isdir(full_dir):
+                            version_dirs.append((int(match.group(1)), full_dir))
+
+                for _, ver_dir in sorted(version_dirs, key=lambda item: item[0], reverse=True):
+                    target_file = self._pick_last_media_file(ver_dir)
+                    if target_file:
+                        break
+
+            if not target_file:
+                logger.warning("No previous version media found.")
+                return
+
+            QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(os.path.normpath(target_file)))
+            logger.info(f"Opened: {target_file}")
+        except Exception:
+            logger.exception("Failed to open last version file.")
 
     def _expand_hip_token(self, path: str) -> str:
         """Expand $HIP using hou.getenv instead of hou.text.expandString (MPlay bug workaround)."""
@@ -630,6 +770,7 @@ class SaveInterface(QtWidgets.QDialog):
         """
         # Ensure UI state and preview path are up to date before exporting
         try:
+            self._set_view_last_highlighted(False)
             self.update_widget_states()
         except Exception:
             pass
@@ -726,6 +867,7 @@ class SaveInterface(QtWidgets.QDialog):
             if err:
                 logger.error(err.strip())
             logger.info("Image sequence save completed.")
+            self._set_view_last_highlighted(True)
 
             # Step 1.5: Write versioninfo.json next to first frame
             logger.info("Writing versioninfo.json...")
@@ -765,7 +907,6 @@ class SaveInterface(QtWidgets.QDialog):
         self.open_folder_button.setVisible(not is_explicit)
         self.identifier_label.setVisible(not is_explicit)
         self.identifier_combo.setVisible(not is_explicit)
-        self.version_label.setVisible(not is_explicit)
         self.auto_version_checkbox.setVisible(not is_explicit)
         self.version_spinbox.setVisible(not is_explicit)
 
@@ -801,6 +942,9 @@ class SaveInterface(QtWidgets.QDialog):
 
     def showEvent(self, event):
         super().showEvent(event)
+        # Re-apply after style polish (Houdini stylesheet may override early sizing).
+        self._apply_control_min_height(28)
+        self._apply_console_scrollbar_style()
         self.attach_logger_to_console()
 
     def attach_logger_to_console(self):
@@ -1001,30 +1145,36 @@ class SaveInterface(QtWidgets.QDialog):
             self.identifier_combo.blockSignals(False)
 
     def open_folder(self):
-        """Open the current base folder directory."""
+        """Open the folder derived from preview path (one directory above file)."""
         try:
             import os
-            import hou
-            folder_path = (self.base_folder_edit.text() or "").strip()
-            folder_path = os.path.expandvars(self._expand_hip_token(folder_path))
+            preview_path = (self.preview_path_value.text() or "").strip().replace("\\", "/")
+            if not preview_path:
+                logger.warning("Preview path is empty.")
+                return
+
+            resolved_preview = os.path.expandvars(self._expand_hip_token(preview_path))
+            resolved_preview = resolved_preview.replace("$F4", "0001").replace("$F", "0001")
+
+            folder_path = os.path.dirname(resolved_preview)
+            folder_path = os.path.dirname(folder_path) # go up 1 to the versions
             folder_path = os.path.normpath(folder_path)
             if not folder_path:
-                logger.warning("Base folder is empty.")
+                logger.warning("Could not resolve folder from preview path.")
                 return
-            original = folder_path
-            for _ in range(4):
-                if os.path.exists(folder_path):
-                    QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(folder_path))
+
+            current_path = folder_path
+            for _ in range(4):  # initial path + up to 3 parent retries
+                if os.path.isdir(current_path):
+                    QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(current_path))
+                    logger.info(f"Opened folder: {current_path}")
                     return
-                parent = os.path.dirname(folder_path)
-                if parent == folder_path:
+                parent = os.path.dirname(current_path)
+                if parent == current_path:
                     break
-                folder_path = parent
-            try:
-                import hou
-                hou.ui.displayMessage(f"Folder does not exist: {original}", severity=hou.severityType.Warning)
-            except Exception:
-                logger.warning(f"Folder does not exist: {original}")
+                current_path = parent
+
+            logger.warning(f"Folder does not exist (after parent retries): {folder_path}")
         except Exception:
             logger.exception("Failed to open folder.")
             pass
