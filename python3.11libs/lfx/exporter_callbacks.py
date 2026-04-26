@@ -28,6 +28,30 @@ from pathlib import Path
 # Prefix for all spare parameters
 PARM_PREFIX = "_lfx_"
 
+# we're mixing 2 points of truth for config, here or the TOML. Maybe should unify? 
+# but also these parms should not change, so maybe they belong here inside the script.
+# Mapping of node types to their output parameters to set the expression on.
+BASE_NODE_PARMS: dict[str, str] = {
+    "Driver/alembic": "filename",
+    "Driver/geometry": "sopoutput",
+    "Driver/ifd": "vm_picture",
+    "Driver/karma": "picture",
+    "Driver/octane_rop": "HO_img_fileName",
+    "Driver/octanerendersetup": "HO_img_fileName",
+    "Driver/opengl": "picture",
+    "Driver/redshift_rop": "RS_outputFileNamePrefix",
+    "Driver/rop_alembic": "filename",
+    "Driver/rop_geometry": "sopoutput",
+    "Driver/rop_image": "copoutput",
+    "Lop/karmarendersettings": "picture",
+    "Lop/usd_rop": "lopoutput",
+    "Lop/usdrender_rop": "outputimage",
+    "Sop/file": "file",
+    "Sop/filecache": "file",
+    "Cop/file": "filename",
+    "Cop/rop_image": "copoutput",
+}
+
 
 def sanitise_multiline(code: str) -> str:
     '''
@@ -55,7 +79,6 @@ def load_prefs() -> dict:
         return data if isinstance(data, dict) else {}
     except Exception:
         return {}
-
 
 def _join_base_and_suffix(base_folder: str, base_suffix: str) -> str:
     base = "" if base_folder is None else str(base_folder)
@@ -97,6 +120,48 @@ def get_optype_config(optype, config):
         return config.get(alias_target, config.get("default", {}))
     
     return optype_config
+
+
+def _is_auto_add_enabled(knode, prefs: dict) -> bool:
+    # maybe refactor this cause its poor AI slop
+    if not bool(prefs.get("auto_add_to_new_node", False)):
+        return False
+
+    nodes = prefs.get("nodes")
+    if not isinstance(nodes, dict):
+        return False
+
+    optype = str(knode.type().nameWithCategory())
+    node_entry = nodes.get(optype)
+    if not isinstance(node_entry, dict):
+        return False
+
+    if not node_entry:
+        return False
+    return bool(node_entry.get("enabled", False))
+
+
+def convert_node(kwargs: dict):
+    """kwargs should contain 'node' key with the Houdini node to convert."""
+    knode = kwargs.get("node")
+    assert knode is not None, "convert_node: No node provided in kwargs"
+
+    prefs = load_prefs()
+    if not _is_auto_add_enabled(knode, prefs):
+        return
+    
+    # get target parameter
+    target_parm = None
+    optype = str(knode.type().nameWithCategory())    
+    parm_name = BASE_NODE_PARMS.get(optype, ())   
+    target_parm = knode.parm(parm_name)    
+        
+    assert target_parm is not None, f"convert_node: No target parameter found for node type {optype}"
+
+    forward_kwargs = dict(kwargs)
+    forward_kwargs["node"] = knode
+    forward_kwargs["parms"] = [target_parm]
+    convert_parm(forward_kwargs)
 
 
 def convert_parm(kwargs):
@@ -511,7 +576,7 @@ def version_lookup_callback(kwargs):
     
 def open_folder_callback(kwargs, parm_name):
     """
-    Callback function to open/explore the folder containing the output file.
+    Callback function for "Open Folder" button to open the folder containing the output file.
     If the folder does not exist, it tries parent directories up to X levels.
     """
     LEVELS = 4

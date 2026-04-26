@@ -76,3 +76,7 @@ default_extension = ".bgeo.sc"
 [rop_fbx]
 extensions = [".fbx"]
 default_extension = ".fbx"
+
+
+["Cop/file"]
+alias = "rop_image"
