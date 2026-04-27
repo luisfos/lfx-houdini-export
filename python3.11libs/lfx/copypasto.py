@@ -22,6 +22,94 @@ def _get_clipboard_text() -> str:
 	raise AttributeError("No supported Houdini clipboard getter found on hou.ui")
 
 
+_STRIP_LINES: frozenset[str] = frozenset({
+	"hou_node.hide(False)",
+	"hou_node.bypass(False)",
+	"hou_node.setDisplayFlag(False)",
+	"hou_node.setRenderFlag(False)",
+	"hou_node.setTemplateFlag(False)",
+	"hou_node.setSelectableTemplateFlag(False)",
+	"hou_node.setHighlightFlag(False)",
+	"hou_node.setHardLocked(False)",
+	"hou_node.setSoftLocked(False)",
+	"hou_node.setUnloadFlag(False)",
+	'hou_node.setExpressionLanguage(hou.exprLanguage.Hscript)',
+	'hou_node.setUserData("___Version___", "")',
+})
+
+
+def _clean_ascode(code: str) -> str:
+	import re
+	import hou  # type: ignore[import-not-found]
+
+	# Pass 1 — strip dead hou_parent re-init block
+	code = re.sub(
+		r'# Initialize parent node variable\.\n'
+		r'if locals\(\)\.get\("hou_parent"\) is None:\n'
+		r'    hou_parent = hou\.node\("[^"]*"\)\n',
+		"",
+		code,
+	)
+
+	# Pass 2 — strip dead hou_node guard inside parm blocks
+	code = re.sub(
+		r'if locals\(\)\.get\("hou_node"\) is None:\n'
+		r'    hou_node = hou\.node\("[^"]*"\)\n',
+		"",
+		code,
+	)
+
+	# Pass 3a — strip 2-line syncNodeVersionIfNeeded block
+	code = re.sub(
+		r'if hasattr\(hou_node, "syncNodeVersionIfNeeded"\):\n'
+		r'    hou_node\.syncNodeVersionIfNeeded\("[^"]*"\)\n?',
+		"",
+		code,
+	)
+
+	# Pass 3b — strip single-line boilerplate deny-list
+	lines = []
+	for line in code.splitlines():
+		if line.strip() not in _STRIP_LINES:
+			lines.append(line)
+	code = "\n".join(lines)
+
+	# Pass 4 — strip entire parm blocks whose value is at default
+	_PARM_BLOCK_RE = re.compile(
+		r'^# Code for (/.+)/([^/\s]+) parm\s*$'
+	)
+	blocks = re.split(r'\n{2,}', code)
+	kept = []
+	for block in blocks:
+		if not block.strip():
+			continue
+		block_lines = block.strip().splitlines()
+		m = _PARM_BLOCK_RE.match(block_lines[0])
+		if m:
+			node_path, parm_name = m.group(1), m.group(2)
+			try:
+				node = hou.node(node_path)
+				if node is not None:
+					# try parm first, fall back to parmTuple
+					p = node.parm(parm_name)
+					if p is not None:
+						if p.isAtDefault():
+							continue
+					else:
+						pt = node.parmTuple(parm_name)
+						if pt is not None and all(c.isAtDefault() for c in pt):
+							continue
+			except Exception:
+				pass
+		kept.append(block.strip())
+	code = "\n\n".join(kept)
+
+	# Pass 5 — collapse 3+ blank lines to 2
+	code = re.sub(r'\n{3,}', '\n\n', code)
+
+	return code
+
+
 def copy() -> None:
 	import hou  # type: ignore[import-not-found]
 
@@ -38,7 +126,7 @@ def copy() -> None:
 	parent = next(iter(parents))
 	parent_type = parent.type().name()
 
-	code_blocks = [node.asCode(brief=True, recurse=True) for node in nodes]
+	code_blocks = [_clean_ascode(node.asCode(brief=True, recurse=True)) for node in nodes]
 
 	bootstrap = f"""import hou
 __lf__parent_type = {parent_type!r}
