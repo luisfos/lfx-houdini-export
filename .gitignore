@@ -3,3 +3,5 @@ python3*/PrismScripts**
 *.pyc
 **/backup/**
 python3*/lfx/user/*
+.vscode/
+copilot-instructions.md

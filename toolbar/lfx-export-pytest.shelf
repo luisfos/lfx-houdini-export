@@ -9,6 +9,8 @@
     <memberTool name="Pytest"/>
     <memberTool name="reload python"/>
     <memberTool name="Exporter Preferences"/>
+    <memberTool name="Copy as Code"/>
+    <memberTool name="Paste as Code"/>
   </toolshelf>
 
   <tool name="Pytest" label="Pytest" icon="MISC_python">
@@ -42,5 +44,18 @@ from lfx import preferences_ui
 
 importlib.reload(preferences_ui)
 preferences_ui.show()]]></script>
+  </tool>
+  <tool name="Copy as Code" label="Copy as Code" icon="MISC_python">
+    <script scriptType="python"><![CDATA[import importlib
+from lfx import copypasto
+importlib.reload(copypasto)
+copypasto.copy()]]></script>
+  </tool>
+
+  <tool name="Paste as Code" label="Paste as Code" icon="MISC_python">
+    <script scriptType="python"><![CDATA[import importlib
+from lfx import copypasto
+importlib.reload(copypasto)
+copypasto.paste()]]></script>
   </tool>
 </shelfDocument>
