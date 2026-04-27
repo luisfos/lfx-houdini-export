@@ -26,13 +26,15 @@ pytest_runner.run()]]></script>
     <helpText><![CDATA["""Reloads lfx_export Python modules.
   """]]></helpText>
     <script scriptType="python"><![CDATA[import importlib    
+import lfx
 from lfx import pytest_runner
 from lfx import exporter_callbacks
 from lfx import exporter_prism_callbacks
 
-importlib.reload(exporter_prism_callbacks)
-importlib.reload(exporter_callbacks)
-importlib.reload(pytest_runner)]]></script>
+# importlib.reload(exporter_prism_callbacks)
+# importlib.reload(exporter_callbacks)
+# importlib.reload(pytest_runner)
+importlib.reload(lfx)]]></script>
   </tool>
 
   <tool name="Exporter Preferences" label="Exporter Preferences" icon="MISC_python">
@@ -45,6 +47,7 @@ from lfx import preferences_ui
 importlib.reload(preferences_ui)
 preferences_ui.show()]]></script>
   </tool>
+
   <tool name="Copy as Code" label="Copy as Code" icon="MISC_python">
     <script scriptType="python"><![CDATA[import importlib
 from lfx import copypasto

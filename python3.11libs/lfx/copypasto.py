@@ -22,7 +22,10 @@ def _get_clipboard_text() -> str:
 	raise AttributeError("No supported Houdini clipboard getter found on hou.ui")
 
 
+# Pass 3b deny-list: single-line calls that are either default-value no-ops,
+# version bookkeeping, or cosmetic state we never want to reproduce on paste.
 _STRIP_LINES: frozenset[str] = frozenset({
+	# flag calls — only False values land here; True values are intentional
 	"hou_node.hide(False)",
 	"hou_node.bypass(False)",
 	"hou_node.setDisplayFlag(False)",
@@ -33,8 +36,12 @@ _STRIP_LINES: frozenset[str] = frozenset({
 	"hou_node.setHardLocked(False)",
 	"hou_node.setSoftLocked(False)",
 	"hou_node.setUnloadFlag(False)",
+	# Hscript is the default expression language
 	'hou_node.setExpressionLanguage(hou.exprLanguage.Hscript)',
-	'hou_node.setUserData("___Version___", "")',
+	# selection state — not meaningful on paste (confusing alongside existing selection)
+	'hou_node.setSelected(True)',
+	# fresh nodes have no keyframes — deleteAllKeyframes() is always a no-op on paste
+	'hou_parm.deleteAllKeyframes()',
 })
 
 
@@ -74,7 +81,32 @@ def _clean_ascode(code: str) -> str:
 			lines.append(line)
 	code = "\n".join(lines)
 
-	# Pass 4 — strip entire parm blocks whose value is at default
+	# Pass 3c — strip setUserData() calls whose key is wrapped in ___ (Houdini internal
+	# metadata such as ___Version___, ___toolid___, ___toolcount___). The exact-match
+	# deny-list can't cover all variants, so use a regex across the whole line.
+	code = re.sub(
+		r'^hou_node\.setUserData\("___[^"]*___"[^\n]*\n?',
+		'',
+		code,
+		flags=re.MULTILINE,
+	)
+
+	# Pass 4a — strip entire parm blocks for folder/tab-visibility parms.
+	# These control which tab is open in the parameter editor — purely cosmetic;
+	# the node will open to its default tab on paste, which is fine.
+	_FOLDER_NAME_RE = re.compile(r'/folder\d* parm\s*$')
+	blocks = re.split(r'\n{2,}', code)
+	kept = []
+	for block in blocks:
+		if not block.strip():
+			continue
+		if _FOLDER_NAME_RE.search(block.strip().splitlines()[0]):
+			continue
+		kept.append(block.strip())
+	code = "\n\n".join(kept)
+
+	# Pass 4b — strip entire parm blocks whose value is at default.
+	# Relies on hou.node() being resolvable at copy time (nodes still exist).
 	_PARM_BLOCK_RE = re.compile(
 		r'^# Code for (/.+)/([^/\s]+) parm\s*$'
 	)
@@ -104,8 +136,71 @@ def _clean_ascode(code: str) -> str:
 		kept.append(block.strip())
 	code = "\n\n".join(kept)
 
+	# Pass 6b — strip "Update the parent node" line emitted after each node's connection
+	# block. These two patterns appear independently so are matched separately.
+	code = re.sub(
+		r'# Update the parent node\.\n'
+		r'hou_parent = hou_node\n?',
+		'',
+		code,
+	)
+	# Pass 6b (cont.) — strip "Restore the parent and current nodes" block
+	code = re.sub(
+		r'# Restore the parent and current nodes\.\n'
+		r'hou_parent = hou_parent\.parent\(\)\n'
+		r'hou_node = hou_node\.parent\(\)\n?',
+		'',
+		code,
+	)
+
 	# Pass 5 — collapse 3+ blank lines to 2
 	code = re.sub(r'\n{3,}', '\n\n', code)
+
+	return code
+
+
+def _clean_connections(code: str) -> str:
+	import re
+
+	# Step 1 — defer all connection blocks to the end so that setInput() calls only
+	# run after every node has been created, regardless of asCode() emission order.
+	_CONN_HEADER_RE = re.compile(r'^# Code to establish connections for ')
+	blocks = [b.strip() for b in re.split(r'\n{2,}', code) if b.strip()]
+	node_blocks = [b for b in blocks if not _CONN_HEADER_RE.match(b)]
+	conn_blocks = [b for b in blocks if _CONN_HEADER_RE.match(b)]
+	code = "\n\n".join(node_blocks + conn_blocks)
+
+	# Step 2 — build a name→stable-variable map from every createNode call in the
+	# joined text. Needs full visibility across all nodes, which is why this runs here
+	# rather than inside _clean_ascode (which is per-node).
+	_CREATE_RE = re.compile(
+		r'(hou_node = hou_parent\.createNode\("[^"]+",\s*"([^"]+)"[^\n]*)'
+	)
+	name_to_var = {
+		name: "_lf_" + re.sub(r'\W', '_', name)
+		for _, name in _CREATE_RE.findall(code)
+	}
+
+	if name_to_var:
+		# Step 3a — insert `_lf_<name> = hou_node` after each createNode line
+		def _insert_capture(m: re.Match) -> str:
+			var = name_to_var[m.group(2)]
+			return m.group(1) + f"\n{var} = hou_node  # stable ref, immune to Houdini rename-for-uniqueness"
+		code = _CREATE_RE.sub(_insert_capture, code)
+
+		# Step 3b — strip `if hou_parent.node("xxx") is not None:` guards;
+		# after capture the variable is always set, so the guard is always true.
+		code = re.sub(
+			r'^if hou_parent\.node\("[^"]+"\) is not None:\n((?:    .+\n?)+)',
+			lambda m: re.sub(r'^    ', '', m.group(1), flags=re.MULTILINE),
+			code,
+			flags=re.MULTILINE,
+		)
+
+		# Step 3c — replace all hou_parent.node("xxx") lookups (in setInput and
+		# hou_node reassignments) with the stable variable.
+		for name, var in name_to_var.items():
+			code = code.replace(f'hou_parent.node("{name}")', var)
 
 	return code
 
@@ -140,11 +235,13 @@ if hou_parent is None:
 	raise hou.Error(\"parent of copied nodes does not match the context you are pasting into\")
 """
 
-	text = bootstrap + "\n\n" + "\n\n".join(code_blocks).strip() + "\n"
+	joined = _clean_connections("\n\n".join(code_blocks).strip())
+	text = bootstrap + "\n\n" + joined + "\n"
 	_set_clipboard_text(text)
 
 
 def paste() -> None:
+	import re
 	import hou  # type: ignore[import-not-found]
 
 	text = _get_clipboard_text()
@@ -153,9 +250,49 @@ def paste() -> None:
 		return
 
 	try:
-		exec(text)
+		# Identify the expected parent network type from the bootstrap marker so we
+		# know what kind of temp container to create.
+		_type_m = re.search(r"^__lf__parent_type\s*=\s*'([^']+)'", text, re.MULTILINE)
+		parent_type = _type_m.group(1) if _type_m else None
+
 		pane = hou.ui.paneTabOfType(hou.paneTabType.NetworkEditor)
+		real_parent = pane.pwd() if pane is not None else None
+
+		temp = None
+		new_nodes = None
+
+		if (
+			parent_type
+			and real_parent is not None
+			and real_parent.type().name() == parent_type
+		):
+			container_parent = real_parent.parent()
+			if container_parent is not None:
+				try:
+					# Create a temp network of the same type. Nodes are built inside it
+					# first, then copied as a group into real_parent. Houdini remaps
+					# internal path references (e.g. "../flow_block_end1") during the
+					# group copy, solving both the name-collision and path-mismatch problems.
+					temp = container_parent.createNode(parent_type, "__lf_copypaste_tmp__")
+				except Exception:
+					temp = None
+
+		if temp is not None:
+			# Pass hou_parent so the bootstrap skips its own pane lookup and targets temp
+			_globs: dict = {"__builtins__": __builtins__, "hou": hou}
+			_locs: dict = {"hou_parent": temp}
+			exec(text, _globs, _locs)  # noqa: S102
+			children = temp.children()
+			if children:
+				new_nodes = hou.copyNodesTo(children, real_parent)
+			temp.destroy()
+		else:
+			exec(text)  # noqa: S102
+
 		if pane is not None:
+			if new_nodes:
+				for i, node in enumerate(new_nodes):
+					node.setSelected(True, clear_all_selected=(i == 0))
 			for meth in ("homeToSelection", "frameSelection", "homeToSelected"):
 				fn = getattr(pane, meth, None)
 				if callable(fn):
@@ -164,6 +301,7 @@ def paste() -> None:
 					except TypeError:
 						fn(True)
 					break
+
 	except Exception as exc:
 		hou.ui.displayMessage(f"paste asCode failed: {exc}")
 
