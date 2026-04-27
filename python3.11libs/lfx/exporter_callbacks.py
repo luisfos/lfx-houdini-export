@@ -21,6 +21,7 @@ TODO:
 import hou
 import os
 import re
+import shutil
 import textwrap
 import tomllib
 from pathlib import Path
@@ -42,7 +43,7 @@ BASE_NODE_PARMS: dict[str, str] = {
     "Driver/redshift_rop": "RS_outputFileNamePrefix",
     "Driver/rop_alembic": "filename",
     "Driver/rop_geometry": "sopoutput",
-    "Driver/rop_image": "copoutput",
+    "Driver/image": "copoutput",
     "Lop/karmarendersettings": "picture",
     "Lop/usd_rop": "lopoutput",
     "Lop/usdrender_rop": "outputimage",
@@ -70,15 +71,19 @@ def sanitise_multiline(code: str) -> str:
 
 def load_prefs() -> dict:
     """Load user preferences from preferences_config.toml."""
-    prefs_path = Path(__file__).parent / "preferences_config.toml"
+    prefs_path = Path(__file__).parent / "user" / "preferences_config.toml"
     if not prefs_path.exists():
-        return {}
+        default_path = Path(__file__).parent / "defaults" / "preferences_config.toml"
+        prefs_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(default_path, prefs_path)
     try:
         with open(prefs_path, "rb") as f:
             data = tomllib.load(f)
-        return data if isinstance(data, dict) else {}
-    except Exception:
-        return {}
+        if not isinstance(data, dict):
+            raise ValueError("Preferences file must contain a top-level dictionary")
+        return data
+    except Exception as e:
+        raise RuntimeError(f"Failed to load preferences: {e}")
 
 def _join_base_and_suffix(base_folder: str, base_suffix: str) -> str:
     base = "" if base_folder is None else str(base_folder)
@@ -95,7 +100,11 @@ def _join_base_and_suffix(base_folder: str, base_suffix: str) -> str:
 # Load configuration from TOML file
 def load_config():
     """Load the parameter menu configuration from TOML file."""
-    config_path = Path(__file__).parent / "exporter_config.toml"
+    config_path = Path(__file__).parent / "user" / "exporter_config.toml"
+    if not config_path.exists():
+        default_path = Path(__file__).parent / "defaults" / "exporter_config.toml"
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(default_path, config_path)
     with open(config_path, "rb") as f:
         return tomllib.load(f)
 
@@ -123,21 +132,14 @@ def get_optype_config(optype, config):
 
 
 def _is_auto_add_enabled(knode, prefs: dict) -> bool:
-    # maybe refactor this cause its poor AI slop
+    # maybe refactor this cause its poor AI slop    
     if not bool(prefs.get("auto_add_to_new_node", False)):
         return False
 
-    nodes = prefs.get("nodes")
-    if not isinstance(nodes, dict):
-        return False
-
-    optype = str(knode.type().nameWithCategory())
-    node_entry = nodes.get(optype)
-    if not isinstance(node_entry, dict):
-        return False
-
-    if not node_entry:
-        return False
+    nodes = prefs.get("nodes")   
+    optype = str(knode.type().nameWithCategory())    
+    node_entry = nodes.get(optype)        
+    
     return bool(node_entry.get("enabled", False))
 
 
@@ -148,6 +150,7 @@ def convert_node(kwargs: dict):
 
     prefs = load_prefs()
     if not _is_auto_add_enabled(knode, prefs):
+        print("remove me. Auto-add is disabled for this node type.")
         return
     
     # get target parameter
@@ -183,7 +186,7 @@ def convert_parm(kwargs):
     
     kparm = parms[0]
     knode = kparm.node()
-    optype = knode.type().name()    
+    optype = knode.type().nameWithCategory()
     optype_name = knode.type().nameComponents()[-2].lower()
     
 
@@ -466,7 +469,7 @@ def convert_parm(kwargs):
     
     # filename: "identifier_v001.0001.ext" or "identifier_v001.ext"
     # Octane ROPs typically manage/expect the extension separately, so omit it.
-    if optype == "octane_rop":
+    if optype_name == "octane_rop":
         filename_expr = (
             f'chs("{PARM_PREFIX}identifier") + "_" + chs("{PARM_PREFIX}version_str") + chs("{PARM_PREFIX}frame_str")'
         )

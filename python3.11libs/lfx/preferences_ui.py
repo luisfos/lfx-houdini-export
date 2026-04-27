@@ -10,10 +10,11 @@ try:
 except Exception:
     hou = None
 
-PREFS_TOML_PATH = os.path.join(os.path.dirname(__file__), "preferences_config.toml")
-PRISM_CONFIG_TOML_PATH = os.path.join(os.path.dirname(__file__), "exporter_prism_config.toml")
+PREFS_TOML_PATH = os.path.join(os.path.dirname(__file__), "user", "preferences_config.toml")
+PRISM_CONFIG_TOML_PATH = os.path.join(os.path.dirname(__file__), "user", "exporter_prism_config.toml")
 DEFAULTS_DIR = os.path.join(os.path.dirname(__file__), "defaults")
 DEFAULT_PREFS_TOML_PATH = os.path.join(DEFAULTS_DIR, "preferences_config.toml")
+DEFAULT_PRISM_CONFIG_TOML_PATH = os.path.join(DEFAULTS_DIR, "exporter_prism_config.toml")
 
 PREFS_PIPELINE_GLOBAL_OPTIONS = ["From config", "Base", "Prism"]
 PREFS_PIPELINE_NODE_OPTIONS = ["Base", "Prism"]
@@ -169,7 +170,8 @@ def _toml_key(key: str) -> str:
 def _default_node_prefs() -> dict:
     """Build default node prefs from exporter_prism_config.toml rop_settings keys."""
     if not os.path.exists(PRISM_CONFIG_TOML_PATH):
-        return {}
+        os.makedirs(os.path.dirname(PRISM_CONFIG_TOML_PATH), exist_ok=True)
+        shutil.copyfile(DEFAULT_PRISM_CONFIG_TOML_PATH, PRISM_CONFIG_TOML_PATH)
 
     try:
         with open(PRISM_CONFIG_TOML_PATH, "rb") as f:
@@ -217,7 +219,8 @@ def _load_prefs():
     defaults["nodes"] = _default_node_prefs()
 
     if not os.path.exists(PREFS_TOML_PATH):
-        return defaults
+        os.makedirs(os.path.dirname(PREFS_TOML_PATH), exist_ok=True)
+        shutil.copyfile(DEFAULT_PREFS_TOML_PATH, PREFS_TOML_PATH)
 
     with open(PREFS_TOML_PATH, "rb") as f:
         data = tomllib.load(f)

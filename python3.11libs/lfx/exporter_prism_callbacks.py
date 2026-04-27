@@ -22,6 +22,7 @@ from pathlib import Path
 from pprint import pprint
 import json
 import os
+import shutil
 
 # Prefix for all spare parameters
 PARM_PREFIX = "_lfx_"
@@ -45,7 +46,11 @@ def sanitise_multiline(code: str) -> str:
 # Load configuration from TOML file
 def load_config():
     """Load the parameter menu configuration from TOML file."""
-    config_path = Path(__file__).parent / "exporter_prism_config.toml"
+    config_path = Path(__file__).parent / "user" / "exporter_prism_config.toml"
+    if not config_path.exists():
+        default_path = Path(__file__).parent / "defaults" / "exporter_prism_config.toml"
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(default_path, config_path)
     with open(config_path, "rb") as f:
         return tomllib.load(f)
 

@@ -2,3 +2,4 @@ python3*/PrismScripts**
 **__pycache__/**
 *.pyc
 **/backup/**
+python3*/lfx/user/*

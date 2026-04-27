@@ -1,67 +1,75 @@
-auto_add_to_new_node = false
-pipeline = "from config"
+auto_add_to_new_node = true
 base_folder = "$HIP"
+pipeline = "base"
 
 [nodes."Driver/alembic"]
 enabled = true
-pipeline = "prism"
+pipeline = "base"
 
 [nodes."Driver/geometry"]
 enabled = true
-pipeline = "prism"
+pipeline = "base"
 
 [nodes."Driver/ifd"]
 enabled = true
-pipeline = "prism"
+pipeline = "base"
 
 [nodes."Driver/karma"]
 enabled = true
-pipeline = "prism"
+pipeline = "base"
 
 [nodes."Driver/octane_rop"]
 enabled = true
-pipeline = "prism"
+pipeline = "base"
 
 [nodes."Driver/octanerendersetup"]
 enabled = true
-pipeline = "prism"
+pipeline = "base"
 
 [nodes."Driver/opengl"]
 enabled = true
-pipeline = "prism"
+pipeline = "base"
 
 [nodes."Driver/redshift_rop"]
 enabled = true
-pipeline = "prism"
+pipeline = "base"
 
 [nodes."Driver/rop_alembic"]
 enabled = true
-pipeline = "prism"
+pipeline = "base"
 
 [nodes."Driver/rop_geometry"]
 enabled = true
-pipeline = "prism"
+pipeline = "base"
 
 [nodes."Driver/rop_image"]
 enabled = true
-pipeline = "prism"
+pipeline = "base"
 
 [nodes."Lop/karmarendersettings"]
 enabled = true
-pipeline = "prism"
+pipeline = "base"
 
 [nodes."Lop/usd_rop"]
 enabled = true
-pipeline = "prism"
+pipeline = "base"
 
 [nodes."Lop/usdrender_rop"]
 enabled = true
-pipeline = "prism"
+pipeline = "base"
 
 [nodes."Sop/file"]
 enabled = true
 pipeline = "base"
 
 [nodes."Sop/filecache"]
+enabled = false
+pipeline = "base"
+
+[nodes."Cop/file"]
+enabled = true
+pipeline = "base"
+
+[nodes."Cop/rop_image"]
 enabled = true
 pipeline = "base"

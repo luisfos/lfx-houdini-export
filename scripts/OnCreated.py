@@ -4,5 +4,6 @@
 # get this to call exporter 
 import lfx.exporter_callbacks as exporter_callbacks
 # print(kwargs)
+# print("running onCreated")
 # TODO some point will need to differentiate between prism and base exporter
 exporter_callbacks.convert_node(kwargs)

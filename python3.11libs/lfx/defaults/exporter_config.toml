@@ -9,16 +9,16 @@ time_dependent = true
 base_suffix = "/geo"
 
 # ROP Geometry node
-[rop_geometry]
+["Driver/rop_geometry"]
 extensions = [".bgeo", ".bgeo.sc", ".vdb"]
 default_extension = ".bgeo.sc"
 
 # Geometry SOP (alias to rop_geometry)
 [geometry]
-alias = "rop_geometry"
+alias = "Driver/rop_geometry"
 
 # ROP Alembic node
-[rop_alembic]
+["Driver/rop_alembic"]
 extensions = [".abc"]
 default_extension = ".abc"
 time_dependent = false
@@ -26,7 +26,7 @@ base_suffix = "/abc"
 
 # Alembic SOP (alias to rop_alembic)
 [alembic]
-alias = "rop_alembic"
+alias = "Driver/rop_alembic"
 
 # Generic Render ROP
 [render]
@@ -49,34 +49,38 @@ base_suffix = "/flip"
 [Octane_ROP]
 alias = "render"
 
-# COPernicus
-[rop_image]
-extensions = [".exr", ".jpg", ".png"]
-default_extension = ".exr"
-base_suffix = "/img"
-
 # USD ROP nodes
-[usd_rop]
+["Lop/usd_rop"]
 extensions = [".usd", ".usda", ".usdc"]
 default_extension = ".usd"
 
 
 
 # File SOP
-[file]
+["Sop/file"]
 extensions = [".bgeo", ".bgeo.sc", ".abc", ".vdb", ".obj", ".fbx"]
 default_extension = ".bgeo.sc"
 
 # File Cache SOP
-[filecache]
+["Sop/filecache"]
 extensions = [".bgeo", ".bgeo.sc", ".vdb"]
 default_extension = ".bgeo.sc"
 
 # ROP FBX
-[rop_fbx]
+["Driver/rop_fbx"]
 extensions = [".fbx"]
 default_extension = ".fbx"
 
 
+# COPs
+["Cop/rop_image"]
+extensions = [".exr", ".jpg", ".png"]
+default_extension = ".exr"
+base_suffix = "/comp"
+
 ["Cop/file"]
-alias = "rop_image"
+alias = "Cop/rop_image"
+
+["Driver/image"]
+alias = "Cop/rop_image"
+
