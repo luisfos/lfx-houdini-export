@@ -205,7 +205,7 @@ def _clean_connections(code: str) -> str:
 	return code
 
 
-def copy() -> None:
+def copy(clean: bool = True) -> None:
 	import hou  # type: ignore[import-not-found]
 
 	nodes = hou.selectedNodes()
@@ -221,7 +221,11 @@ def copy() -> None:
 	parent = next(iter(parents))
 	parent_type = parent.type().name()
 
-	code_blocks = [_clean_ascode(node.asCode(brief=True, recurse=True)) for node in nodes]
+	if clean:
+		code_blocks = [_clean_ascode(node.asCode(brief=True, recurse=True)) for node in nodes]
+	else:
+		# Raw mode (modifier key held on shelf): skip all cleaning for debugging purposes
+		code_blocks = [node.asCode(brief=True, recurse=True) for node in nodes]
 
 	bootstrap = f"""import hou
 __lf__parent_type = {parent_type!r}
@@ -235,13 +239,17 @@ if hou_parent is None:
 	raise hou.Error(\"parent of copied nodes does not match the context you are pasting into\")
 """
 
-	joined = _clean_connections("\n\n".join(code_blocks).strip())
+	if clean:
+		joined = _clean_connections("\n\n".join(code_blocks).strip())
+	else:
+		joined = "\n\n".join(code_blocks).strip()
 	text = bootstrap + "\n\n" + joined + "\n"
 	_set_clipboard_text(text)
 
 
 def paste() -> None:
 	import re
+	import traceback
 	import hou  # type: ignore[import-not-found]
 
 	text = _get_clipboard_text()
@@ -250,6 +258,15 @@ def paste() -> None:
 		return
 
 	try:
+		# Compile first to surface SyntaxErrors with a line number before any exec.
+		try:
+			compiled = compile(text, "<copypasto>", "exec")
+		except SyntaxError as syn:
+			hou.ui.displayMessage(
+				f"paste asCode SyntaxError on line {syn.lineno}:\n{syn.msg}\n\n{syn.text}"
+			)
+			return
+
 		# Identify the expected parent network type from the bootstrap marker so we
 		# know what kind of temp container to create.
 		_type_m = re.search(r"^__lf__parent_type\s*=\s*'([^']+)'", text, re.MULTILINE)
@@ -281,13 +298,13 @@ def paste() -> None:
 			# Pass hou_parent so the bootstrap skips its own pane lookup and targets temp
 			_globs: dict = {"__builtins__": __builtins__, "hou": hou}
 			_locs: dict = {"hou_parent": temp}
-			exec(text, _globs, _locs)  # noqa: S102
+			exec(compiled, _globs, _locs)  # noqa: S102
 			children = temp.children()
 			if children:
 				new_nodes = hou.copyNodesTo(children, real_parent)
 			temp.destroy()
 		else:
-			exec(text)  # noqa: S102
+			exec(compiled)  # noqa: S102
 
 		if pane is not None:
 			if new_nodes:
@@ -303,45 +320,7 @@ def paste() -> None:
 					break
 
 	except Exception as exc:
-		hou.ui.displayMessage(f"paste asCode failed: {exc}")
+		# Include the full traceback so line numbers in <copypasto> are visible
+		tb = traceback.format_exc()
+		hou.ui.displayMessage(f"paste asCode failed: {exc}\n\n{tb}")
 
-
-'''
-example clipboard text
-import hou
-# Initialize parent node variable.
-if locals().get("hou_parent") is None:
-    hou_parent = hou.node("/obj/turb_amplitude")
-
-if hou_parent is None:
-    hou_parent = import importlib
-import prism_callbacks
-importlib.reload(prism_callbacks)
-# Code for /obj/turb_amplitude/interpolate2
-hou_node = hou_parent.createNode("attribwrangle", "interpolate2", run_init_scripts=False, load_contents=True, exact_type_name=True)
-hou_node.move(hou.Vector2(25.8756, -29.3249))
-hou_node.bypass(False)
-hou_node.setDisplayFlag(False)
-hou_node.hide(False)
-hou_node.setHighlightFlag(False)
-hou_node.setHardLocked(False)
-hou_node.setSoftLocked(False)
-hou_node.setSelectableTemplateFlag(False)
-hou_node.setSelected(True)
-hou_node.setRenderFlag(False)
-hou_node.setTemplateFlag(False)
-hou_node.setUnloadFlag(False)
-
-# Code for /obj/turb_amplitude/interpolate2/snippet parm 
-if locals().get("hou_node") is None:
-    hou_node = hou.node("/obj/turb_amplitude/interpolate2")
-hou_parm = hou_node.parm("snippet")
-hou_parm.deleteAllKeyframes()
-hou_parm.set("float t = @TimeInc;\nfloat b = 1.0;\nfloat s = rand(@ptnum,@Time);\nfloat s2 = rand(@ptnum-100,@Time-100);\nfloat s3 = rand(@ptnum-69,@Time-42);\n\n// keeps more points towards centre frame\n// less points on the boundaries between frames, so less visible step overlapping\nfloat bell(float u) // input 0-1\n{\n    float x = 2.0*u - 1.0;\n    float a = abs(x);\n    return 0.5 * ((x < 0.0 ? -a : a) * sqrt(a) + 1.0);\n}\n// s = bell(s);\n// s2 = bell(s2);\ns = (s-.5) *2.0 * b; // recentre -1 1\ns2 = (s2-.5) *2.*b;\ns3 = (s3-.5) *2.*b;\n\nfloat bias = s * t;\nf@bias = bias;\nvector oldv = v@v;\n\nv@P = v@P +\n     v@v * bias +\n     v@accel * bias * bias * .5 +\n     v@jerk * bias * bias * bias / 6.0;\n\n// diff seed for velocity bias helps avoid steps on simple cases\nbias = s2 * t;\nv@v = v@emitv +\n      v@emita * bias +\n      v@emitj * bias * bias * .5;\n      \n\nbias = s3 * t;\n// at this point our P has jittered but not with respect to the emit velocity\nv@P += v@v * bias;\n// f@dot = dot(normalize(oldv),normalize(v@v));\n")
-
-
-hou_node.setColor(hou.Color([0.89, 0.412, 0.761]))
-hou_node.setExpressionLanguage(hou.exprLanguage.Hscript)
-
-
-'''

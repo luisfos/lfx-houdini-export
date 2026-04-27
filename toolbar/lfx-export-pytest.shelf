@@ -52,7 +52,9 @@ preferences_ui.show()]]></script>
     <script scriptType="python"><![CDATA[import importlib
 from lfx import copypasto
 importlib.reload(copypasto)
-copypasto.copy()]]></script>
+# Shift or Ctrl click copies raw unfiltered asCode() output for debugging
+raw = kwargs.get('shiftclick') or kwargs.get('ctrlclick')
+copypasto.copy(clean=not raw)]]></script>
   </tool>
 
   <tool name="Paste as Code" label="Paste as Code" icon="MISC_python">
