@@ -61,6 +61,8 @@ copypasto.copy(clean=not raw)]]></script>
     <script scriptType="python"><![CDATA[import importlib
 from lfx import copypasto
 importlib.reload(copypasto)
-copypasto.paste()]]></script>
+# Shift or Ctrl click pastes directly (no temp container) for debugging
+raw = kwargs.get('shiftclick') or kwargs.get('ctrlclick')
+copypasto.paste(use_temp=not raw)]]></script>
   </tool>
 </shelfDocument>

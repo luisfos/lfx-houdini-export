@@ -105,17 +105,31 @@ def _clean_ascode(code: str) -> str:
 		kept.append(block.strip())
 	code = "\n\n".join(kept)
 
-	# Pass 4b — strip entire parm blocks whose value is at default.
-	# Relies on hou.node() being resolvable at copy time (nodes still exist).
+	# Pass 4b — strip entire parm blocks whose value is at default, plus any
+	# trailing keyframe blocks that belong to that parm. When asCode() emits a
+	# parm with expression keyframes the structure is:
+	#   Block A: "# Code for .../parmname parm" + hou_parm assignment (header)
+	#   Block B+: "# Code for [first|last] keyframe." / "# Code for keyframe."
+	# If we drop Block A we must also drop B+ or hou_parm will be undefined.
 	_PARM_BLOCK_RE = re.compile(
 		r'^# Code for (/.+)/([^/\s]+) parm\s*$'
 	)
+	_KEYFRAME_RE = re.compile(
+		r'^# Code for (?:first |last )?keyframe\.'
+	)
 	blocks = re.split(r'\n{2,}', code)
 	kept = []
+	drop_keyframes = False  # True while we should drop keyframe blocks for a dropped parm
 	for block in blocks:
 		if not block.strip():
 			continue
 		block_lines = block.strip().splitlines()
+		# If previous parm was dropped, skip its trailing keyframe blocks
+		if drop_keyframes:
+			if _KEYFRAME_RE.match(block_lines[0]):
+				continue
+			else:
+				drop_keyframes = False
 		m = _PARM_BLOCK_RE.match(block_lines[0])
 		if m:
 			node_path, parm_name = m.group(1), m.group(2)
@@ -126,32 +140,51 @@ def _clean_ascode(code: str) -> str:
 					p = node.parm(parm_name)
 					if p is not None:
 						if p.isAtDefault():
+							drop_keyframes = True
 							continue
 					else:
 						pt = node.parmTuple(parm_name)
 						if pt is not None and all(c.isAtDefault() for c in pt):
+							drop_keyframes = True
 							continue
 			except Exception:
 				pass
 		kept.append(block.strip())
 	code = "\n\n".join(kept)
 
+	# Pass 4c — deduplicate consecutive identical keyframe blocks.
+	# asCode() can emit the same keyframe block 3-4x for a single parm (first/last/extra
+	# entries all resolving to the same time+expression). Keep only the first occurrence.
+	blocks = re.split(r'\n{2,}', code)
+	kept = []
+	prev = None
+	for block in blocks:
+		stripped = block.strip()
+		if not stripped:
+			continue
+		if _KEYFRAME_RE.match(stripped.splitlines()[0]) and stripped == prev:
+			continue  # identical consecutive keyframe block — drop duplicate
+		kept.append(stripped)
+		prev = stripped
+	code = "\n\n".join(kept)
+
 	# Pass 6b — strip "Update the parent node" line emitted after each node's connection
-	# block. These two patterns appear independently so are matched separately.
-	code = re.sub(
-		r'# Update the parent node\.\n'
-		r'hou_parent = hou_node\n?',
-		'',
-		code,
-	)
-	# Pass 6b (cont.) — strip "Restore the parent and current nodes" block
-	code = re.sub(
-		r'# Restore the parent and current nodes\.\n'
-		r'hou_parent = hou_parent\.parent\(\)\n'
-		r'hou_node = hou_node\.parent\(\)\n?',
-		'',
-		code,
-	)
+	# block. These two patterns appear independently so are matched separately. this was causing too many problems for nested graphs
+	# code = re.sub(
+	# 	r'# Update the parent node\.\n'
+	# 	r'hou_parent = hou_node\n?',
+	# 	'',
+	# 	code,
+	# )
+	# Pass 6b (cont.) — DISABLED: "Restore the parent and current nodes" lines are
+	# required for nested graphs (subnets) to reset hou_parent after each level.
+	# code = re.sub(
+	# 	r'# Restore the parent and current nodes\.\n'
+	# 	r'hou_parent = hou_parent\.parent\(\)\n'
+	# 	r'hou_node = hou_node\.parent\(\)\n?',
+	# 	'',
+	# 	code,
+	# )
 
 	# Pass 5 — collapse 3+ blank lines to 2
 	code = re.sub(r'\n{3,}', '\n\n', code)
@@ -162,13 +195,9 @@ def _clean_ascode(code: str) -> str:
 def _clean_connections(code: str) -> str:
 	import re
 
-	# Step 1 — defer all connection blocks to the end so that setInput() calls only
-	# run after every node has been created, regardless of asCode() emission order.
-	_CONN_HEADER_RE = re.compile(r'^# Code to establish connections for ')
-	blocks = [b.strip() for b in re.split(r'\n{2,}', code) if b.strip()]
-	node_blocks = [b for b in blocks if not _CONN_HEADER_RE.match(b)]
-	conn_blocks = [b for b in blocks if _CONN_HEADER_RE.match(b)]
-	code = "\n\n".join(node_blocks + conn_blocks)
+	# Step 1 — DISABLED: deferring connection blocks to the end breaks nested graphs
+	# because hou_parent must be updated (via "Update the parent node") between levels.
+	# For non-nested graphs asCode() already emits connections after node creation.
 
 	# Step 2 — build a name→stable-variable map from every createNode call in the
 	# joined text. Needs full visibility across all nodes, which is why this runs here
@@ -240,14 +269,15 @@ if hou_parent is None:
 """
 
 	if clean:
-		joined = _clean_connections("\n\n".join(code_blocks).strip())
+		# joined = _clean_connections("\n\n".join(code_blocks).strip())
+		joined = "\n\n".join(code_blocks).strip()
 	else:
 		joined = "\n\n".join(code_blocks).strip()
 	text = bootstrap + "\n\n" + joined + "\n"
 	_set_clipboard_text(text)
 
 
-def paste() -> None:
+def paste(use_temp: bool = True) -> None:
 	import re
 	import traceback
 	import hou  # type: ignore[import-not-found]
@@ -279,7 +309,8 @@ def paste() -> None:
 		new_nodes = None
 
 		if (
-			parent_type
+			use_temp
+			and parent_type
 			and real_parent is not None
 			and real_parent.type().name() == parent_type
 		):
@@ -320,7 +351,15 @@ def paste() -> None:
 					break
 
 	except Exception as exc:
-		# Include the full traceback so line numbers in <copypasto> are visible
+		# Include the full traceback so line numbers in <copypasto> are visible.
+		# Also look up the offending source line(s) from the clipboard text.
 		tb = traceback.format_exc()
-		hou.ui.displayMessage(f"paste asCode failed: {exc}\n\n{tb}")
+		offending_lines = []
+		for ln_str in re.findall(r'File "<copypasto>", line (\d+)', tb):
+			idx = int(ln_str) - 1
+			src = text.splitlines()
+			if 0 <= idx < len(src):
+				offending_lines.append(f"  line {ln_str}: {src[idx].strip()}")
+		offending_note = ("\nOffending:\n" + "\n".join(offending_lines)) if offending_lines else ""
+		hou.ui.displayMessage(f"paste asCode failed: {exc}{offending_note}\n\n{tb}")
 
