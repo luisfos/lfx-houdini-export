@@ -11,6 +11,7 @@
     <memberTool name="Exporter Preferences"/>
     <memberTool name="Copy as Code"/>
     <memberTool name="Paste as Code"/>
+    <memberTool name="hda2subnet"/>
   </toolshelf>
 
   <tool name="Pytest" label="Pytest" icon="MISC_python">
@@ -65,4 +66,14 @@ importlib.reload(copypasto)
 raw = kwargs.get('shiftclick') or kwargs.get('ctrlclick')
 copypasto.paste(use_temp=not raw)]]></script>
   </tool>
+
+  <tool name="hda2subnet" label="HDA to Subnet" icon="MISC_python">
+    <helpText><![CDATA["""Convert selected HDA nodes to subnets.
+"""]]></helpText>
+    <script scriptType="python"><![CDATA[import importlib
+from lfx import hda2subnet
+importlib.reload(hda2subnet)
+hda2subnet.run()]]></script>
+  </tool>
+
 </shelfDocument>

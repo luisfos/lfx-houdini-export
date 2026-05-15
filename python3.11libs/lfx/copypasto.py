@@ -234,10 +234,13 @@ def _clean_connections(code: str) -> str:
 	return code
 
 
-def copy(clean: bool = True) -> None:
+def copy(selection: list = None, clean: bool = True) -> None:
 	import hou  # type: ignore[import-not-found]
 
 	nodes = hou.selectedNodes()
+	if selection is not None:
+		nodes = selection
+
 	if not nodes:
 		hou.ui.displayMessage("No nodes selected.")
 		return
