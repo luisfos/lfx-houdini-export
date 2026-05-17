@@ -53,18 +53,18 @@ preferences_ui.show()]]></script>
     <script scriptType="python"><![CDATA[import importlib
 from lfx import copypasto
 importlib.reload(copypasto)
-# Shift or Ctrl click copies raw unfiltered asCode() output for debugging
-raw = kwargs.get('shiftclick') or kwargs.get('ctrlclick')
-copypasto.copy(clean=not raw)]]></script>
+
+# raw = kwargs.get('shiftclick') or kwargs.get('ctrlclick')
+copypasto.copy_asData()]]></script>
   </tool>
 
   <tool name="Paste as Code" label="Paste as Code" icon="MISC_python">
     <script scriptType="python"><![CDATA[import importlib
 from lfx import copypasto
 importlib.reload(copypasto)
-# Shift or Ctrl click pastes directly (no temp container) for debugging
-raw = kwargs.get('shiftclick') or kwargs.get('ctrlclick')
-copypasto.paste(use_temp=not raw)]]></script>
+
+# raw = kwargs.get('shiftclick') or kwargs.get('ctrlclick')
+copypasto.paste_asData()]]></script>
   </tool>
 
   <tool name="hda2subnet" label="HDA to Subnet" icon="MISC_python">
@@ -75,5 +75,4 @@ from lfx import hda2subnet
 importlib.reload(hda2subnet)
 hda2subnet.run()]]></script>
   </tool>
-
 </shelfDocument>
