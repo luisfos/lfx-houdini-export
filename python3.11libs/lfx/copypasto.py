@@ -45,6 +45,8 @@ _STRIP_LINES: frozenset[str] = frozenset({
 })
 
 
+
+
 def _clean_ascode(code: str) -> str:
 	import re
 	import hou  # type: ignore[import-not-found]
@@ -237,7 +239,7 @@ def _clean_connections(code: str) -> str:
 def copy(selection: list = None, clean: bool = True) -> None:
 	import hou  # type: ignore[import-not-found]
 
-	nodes = hou.selectedNodes()
+	nodes = hou.selectedItems() # instead of selectedNodes() to support dots
 	if selection is not None:
 		nodes = selection
 
@@ -254,6 +256,10 @@ def copy(selection: list = None, clean: bool = True) -> None:
 	parent_type = parent.type().name()
 
 	if clean:
+		# first get the asCode text
+		# divide and conquer, separate each block by double \n
+		# each block can be classified by their first line comment
+
 		code_blocks = [_clean_ascode(node.asCode(brief=True, recurse=True)) for node in nodes]
 	else:
 		# Raw mode (modifier key held on shelf): skip all cleaning for debugging purposes
@@ -366,3 +372,36 @@ def paste(use_temp: bool = True) -> None:
 		offending_note = ("\nOffending:\n" + "\n".join(offending_lines)) if offending_lines else ""
 		hou.ui.displayMessage(f"paste asCode failed: {exc}{offending_note}\n\n{tb}")
 
+
+
+# add local test if main
+if __name__ == "__main__":
+	# get text from cp_output_raw.txt 	
+	# get better text as this already had some processing joinning multiple nodes
+	with open("cp_output_raw.txt", "r") as f:
+		asCode_text = f.read()
+
+	# first get the asCode text
+	# divide and conquer, separate each block by double \n
+	# each block can be classified by their first line comment
+	asCode_blocks = asCode_text.split("\n\n")
+	for block in asCode_blocks:
+		first_line = block.splitlines()[0] if block else ""
+		# classify block by first line comment
+
+		# pattern for node: "# Code for /path/to/node"
+
+		# pattern for parm: "# Code for /path/to/node parm"
+		# could do endswith(' parm')?
+
+		# pattern for connections "# Code to establish connections for /path/to/node"
+
+		# pattern unsorted:
+		# Initialize parent node variable.
+		# Restore the parent and current nodes.
+		# Update the parent node.
+		
+	
+
+
+	
