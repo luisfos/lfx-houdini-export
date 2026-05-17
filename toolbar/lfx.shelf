@@ -38,7 +38,7 @@ from lfx import exporter_prism_callbacks
 importlib.reload(lfx)]]></script>
   </tool>
 
-  <tool name="Exporter Preferences" label="Exporter Preferences" icon="MISC_python">
+  <tool name="Exporter Preferences" label="Exporter Preferences" icon="SOP_sort">
     <helpText><![CDATA["""Configure user preferences for the pipe parm tooling.
 Preferences are saved into python3.11libs as a .toml.
 """]]></helpText>
@@ -49,7 +49,7 @@ importlib.reload(preferences_ui)
 preferences_ui.show()]]></script>
   </tool>
 
-  <tool name="Copy as Code" label="Copy as Code" icon="MISC_python">
+  <tool name="Copy as Code" label="Copy as Code" icon="hicon:/SVGIcons.index?BUTTONS_copy.svg">
     <script scriptType="python"><![CDATA[import importlib
 from lfx import copypasto
 importlib.reload(copypasto)
@@ -58,7 +58,7 @@ modifier = kwargs.get('shiftclick') or kwargs.get('ctrlclick')
 copypasto.copy_asData(compression=modifier)]]></script>
   </tool>
 
-  <tool name="Paste as Code" label="Paste as Code" icon="MISC_python">
+  <tool name="Paste as Code" label="Paste as Code" icon="hicon:/SVGIcons.index?BUTTONS_paste.svg">
     <script scriptType="python"><![CDATA[import importlib
 from lfx import copypasto
 importlib.reload(copypasto)
@@ -67,7 +67,7 @@ importlib.reload(copypasto)
 copypasto.paste_asData()]]></script>
   </tool>
 
-  <tool name="hda2subnet" label="HDA to Subnet" icon="MISC_python">
+  <tool name="hda2subnet" label="HDA to Subnet" icon="SOP_subnet">
     <helpText><![CDATA["""Convert selected HDA nodes to subnets.
 """]]></helpText>
     <script scriptType="python"><![CDATA[import importlib
