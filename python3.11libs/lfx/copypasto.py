@@ -1,3 +1,6 @@
+import base64
+
+
 def _set_clipboard_text(text: str) -> None:
 	import hou  # type: ignore[import-not-found]
 
@@ -22,7 +25,7 @@ def _get_clipboard_text() -> str:
 	raise AttributeError("No supported Houdini clipboard getter found on hou.ui")
 
 
-def copy_asData(selection: list = None) -> None:
+def copy_asData(selection: list = None, compression: bool = False) -> None:
 	'''
 	instead of relying on asCode, we use asData which is more modern but
 	might require more handling on the paste side.
@@ -39,13 +42,20 @@ def copy_asData(selection: list = None) -> None:
 
 	first_position = list(selection[0].position())
 
+	import json	
+	if compression:
+		import zlib
+		import base64
+		compressed_data = zlib.compress(json.dumps(data, separators=(',', ':')).encode('utf-8'), level=9)
+		data = base64.b64encode(compressed_data).decode('ascii')
+
 	# store the data dict in the clipboard as a string
-	import json
 	envelope = json.dumps({
 		"lfx_format": "asData_v1",
 		"parent_type": parent.childTypeCategory().name(),
 		"data": data,
-		"first_position": first_position
+		"first_position": first_position,
+		"compression": compression,
 	})
 	_set_clipboard_text(json.dumps(envelope))
 
@@ -70,6 +80,11 @@ def paste_asData() -> None:
 
 	parent_type = envelope.get("parent_type")
 	data = envelope.get("data")
+
+	if envelope.get("compression", False):
+		import zlib
+		import base64
+		data = json.loads(zlib.decompress(base64.b64decode(data)).decode('utf-8'))
 
 	pane = hou.ui.paneTabOfType(hou.paneTabType.NetworkEditor)
 	target_parent = pane.pwd() 

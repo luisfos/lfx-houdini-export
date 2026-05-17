@@ -54,8 +54,8 @@ preferences_ui.show()]]></script>
 from lfx import copypasto
 importlib.reload(copypasto)
 
-# raw = kwargs.get('shiftclick') or kwargs.get('ctrlclick')
-copypasto.copy_asData()]]></script>
+modifier = kwargs.get('shiftclick') or kwargs.get('ctrlclick')
+copypasto.copy_asData(compression=modifier)]]></script>
   </tool>
 
   <tool name="Paste as Code" label="Paste as Code" icon="MISC_python">
