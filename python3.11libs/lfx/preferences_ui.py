@@ -10,11 +10,27 @@ try:
 except Exception:
     hou = None
 
-PREFS_TOML_PATH = os.path.join(os.path.dirname(__file__), "user", "preferences_config.toml")
-PRISM_CONFIG_TOML_PATH = os.path.join(os.path.dirname(__file__), "user", "exporter_prism_config.toml")
 DEFAULTS_DIR = os.path.join(os.path.dirname(__file__), "defaults")
 DEFAULT_PREFS_TOML_PATH = os.path.join(DEFAULTS_DIR, "preferences_config.toml")
 DEFAULT_PRISM_CONFIG_TOML_PATH = os.path.join(DEFAULTS_DIR, "exporter_prism_config.toml")
+
+
+def _lfx_user_dir() -> str:
+    """Return the user-writable lfx prefs directory ($HOUDINI_USER_PREF_DIR/lfx).    
+    """
+    if hou is not None:        
+        return os.path.join(hou.homeHoudiniDirectory(), "lfx")
+        
+    hupd = os.environ.get("HOUDINI_USER_PREF_DIR", "")
+    if hupd:
+        return os.path.join(hupd, "lfx")
+    else:
+        raise EnvironmentError("HOUDINI_USER_PREF_DIR is not set. Cannot determine user preferences directory.")
+    
+
+_USER_DIR = _lfx_user_dir()
+PREFS_TOML_PATH = os.path.join(_USER_DIR, "preferences_config.toml")
+PRISM_CONFIG_TOML_PATH = os.path.join(_USER_DIR, "exporter_prism_config.toml")
 
 PREFS_PIPELINE_GLOBAL_OPTIONS = ["From config", "Base", "Prism"]
 PREFS_PIPELINE_NODE_OPTIONS = ["Base", "Prism"]

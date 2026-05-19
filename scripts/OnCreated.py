@@ -1,8 +1,10 @@
 # this script doesn't need to be reloaded
 # entry point for exportercallback
+# print(kwargs)
+# print("running onCreated")
 
 # kwargs is predefined when this callback script runs, how do we get IDE to know this?
-optype = str(kwargs['node'].type().nameWithCategory())    
+optype = str(kwargs["node"].type().nameWithCategory())
 
 # if optype isnt in this list then we just ignore it and do nothing, otherwise we will export it
 BASE_NODE_PARMS: dict[str, str] = {
@@ -22,14 +24,16 @@ BASE_NODE_PARMS: dict[str, str] = {
     "Lop/usdrender_rop": "outputimage",
     "Sop/file": "file",
     "Sop/filecache": "file",
+    "Sop/rop_alembic": "filename",
+    "Sop/rop_geometry": "sopoutput",
     "Cop/file": "filename",
     "Cop/rop_image": "copoutput",
 }
 
+
 if optype in BASE_NODE_PARMS.keys():
     import lfx.exporter_callbacks as exporter_callbacks
+
     exporter_callbacks.convert_node(kwargs)
-# print(kwargs)
-# print("running onCreated")
 # TODO some point will need to differentiate between prism and base exporter
 # maybe in here actually we should check the prefs and then call the appropriate exporter callback

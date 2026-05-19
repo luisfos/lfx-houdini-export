@@ -46,7 +46,7 @@ def sanitise_multiline(code: str) -> str:
 # Load configuration from TOML file
 def load_config():
     """Load the parameter menu configuration from TOML file."""
-    config_path = Path(__file__).parent / "user" / "exporter_prism_config.toml"
+    config_path = Path(hou.homeHoudiniDirectory()) / "lfx" / "exporter_prism_config.toml"
     if not config_path.exists():
         default_path = Path(__file__).parent / "defaults" / "exporter_prism_config.toml"
         config_path.parent.mkdir(parents=True, exist_ok=True)

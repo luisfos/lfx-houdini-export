@@ -103,7 +103,24 @@ def run() -> int:
         if mod_file and str(mod_file).startswith(tests_prefix):
             del sys.modules[name]
 
-    args = _pytest_args(tests_path)
+    test_files = sorted(tests_path.glob("test_*.py"))
+
+    import hou
+    if hou.isUIAvailable() and test_files:
+        choices = [f.name for f in test_files]
+        selected = hou.ui.selectFromList(
+            choices,
+            default_choices=tuple(range(len(choices))),
+            message="Select tests to run:",
+            title="Run Pytest",
+            column_header="Test File",
+            clear_on_cancel=True,
+        )
+        if not selected:
+            return 0
+        args = [str(test_files[i]) for i in selected] + _pytest_args(tests_path)[1:]
+    else:
+        args = _pytest_args(tests_path)
 
     old_cwd = os.getcwd()
     buf = io.StringIO()

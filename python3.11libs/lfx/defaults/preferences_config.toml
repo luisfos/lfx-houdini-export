@@ -2,6 +2,14 @@ auto_add_to_new_node = true
 base_folder = "$HIP"
 pipeline = "base"
 
+[nodes."Cop/file"]
+enabled = false
+pipeline = "base"
+
+[nodes."Cop/rop_image"]
+enabled = true
+pipeline = "base"
+
 [nodes."Driver/alembic"]
 enabled = true
 pipeline = "base"
@@ -66,10 +74,10 @@ pipeline = "base"
 enabled = false
 pipeline = "base"
 
-[nodes."Cop/file"]
+[nodes."Sop/rop_alembic"]
 enabled = true
 pipeline = "base"
 
-[nodes."Cop/rop_image"]
+[nodes."Sop/rop_geometry"]
 enabled = true
 pipeline = "base"

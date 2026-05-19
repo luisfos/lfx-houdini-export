@@ -7,7 +7,7 @@
 
   <toolshelf name="LFX" label="LFX">
     <memberTool name="Pytest"/>
-    <memberTool name="reload python"/>
+    <memberTool name="reload_python"/>
     <memberTool name="Exporter Preferences"/>
     <memberTool name="Copy as Code"/>
     <memberTool name="Paste as Code"/>
@@ -21,21 +21,6 @@
 from lfx import pytest_runner
 importlib.reload(pytest_runner)
 pytest_runner.run()]]></script>
-  </tool>
-
-  <tool name="reload python" label="reload python" icon="MISC_python">
-    <helpText><![CDATA["""Reloads lfx_export Python modules.
-  """]]></helpText>
-    <script scriptType="python"><![CDATA[import importlib    
-import lfx
-from lfx import pytest_runner
-from lfx import exporter_callbacks
-from lfx import exporter_prism_callbacks
-
-# importlib.reload(exporter_prism_callbacks)
-# importlib.reload(exporter_callbacks)
-# importlib.reload(pytest_runner)
-importlib.reload(lfx)]]></script>
   </tool>
 
   <tool name="Exporter Preferences" label="Exporter Preferences" icon="SOP_sort">
@@ -74,5 +59,20 @@ copypasto.paste_asData()]]></script>
 from lfx import hda2subnet
 importlib.reload(hda2subnet)
 hda2subnet.run()]]></script>
+  </tool>
+
+  <tool name="reload_python" label="Reload Python" icon="MISC_python">
+    <helpText><![CDATA["""Reloads lfx_export Python modules.
+  """]]></helpText>
+    <script scriptType="python"><![CDATA[import importlib    
+import lfx
+from lfx import pytest_runner
+from lfx import exporter_callbacks
+from lfx import exporter_prism_callbacks
+
+# importlib.reload(exporter_prism_callbacks)
+# importlib.reload(exporter_callbacks)
+# importlib.reload(pytest_runner)
+importlib.reload(lfx)]]></script>
   </tool>
 </shelfDocument>
